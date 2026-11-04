@@ -1,0 +1,25 @@
+{
+  "fps": 24, "bpm": 80, "beatsPerBar": 4, "bars": 15, "dur": 45.0, "cutsOnBars": true,
+  "shots": [
+    { "id": "S1",  "start": "1:1",  "end": "2:1",  "framing": "主构图 A：拉灯，灯灭色 → 暖灯色" },
+    { "id": "S2",  "start": "2:1",  "end": "3:1",  "framing": "特写正俯：落粉像雪，压面窝" },
+    { "id": "S3",  "start": "3:1",  "end": "4:1",  "framing": "近景微仰：逆光半剪影揉面" },
+    { "id": "S4",  "start": "4:1",  "end": "5:1",  "framing": "近景→中景：擀面，歇一拍" },
+    { "id": "S5",  "start": "5:1",  "end": "6:1",  "framing": "招牌：面片举向吊灯透光", "noText": true },
+    { "id": "S6",  "start": "6:1",  "end": "7:1",  "framing": "一镜三段：横摇跟刀→推近刀刃→拉回抖面" },
+    { "id": "S7",  "start": "7:1",  "end": "8:1",  "framing": "锅口：下锅，热气白闪", "noText": true },
+    { "id": "S8",  "start": "8:1",  "end": "9:1",  "framing": "外景多层降镜：雪夜门脸", "noText": true },
+    { "id": "S9",  "start": "9:1",  "end": "10:1", "framing": "插入：浇汤、两撮葱" },
+    { "id": "S10", "start": "10:1", "end": "11:1", "framing": "侧拍：递碗，harmony 静帧", "noText": true },
+    { "id": "S11", "start": "11:1", "end": "12:1", "framing": "同构图：空碗，真静默 1" },
+    { "id": "S12", "start": "12:1", "end": "13:1", "framing": "正俯：擦台面，拇指抹木纹" },
+    { "id": "S13", "start": "13:1", "end": "16:1", "framing": "主构图 A'：拉灭灯，卷帘门落下，片名" }
+  ],
+  "subs": [
+    { "id": "M1", "start": "2:2", "end": "3:3", "text": "案板三十二年没空过" },
+    { "id": "M2", "start": "3:3", "end": "4:4", "text": "这双手就会这一样" },
+    { "id": "M3", "start": "11:4", "end": "13:1", "text": "明儿不用早起和面了" }
+  ],
+  "silences": [{ "start": "11:1", "end": "11:2" }, { "start": "13:1", "end": "13:2" }],
+  "nativeMove": "S13", "signature": "S5"
+}

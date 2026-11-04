@@ -1,0 +1,20 @@
+# 白名单：只收我们自己写的部分。其余文件来自 anything2explainer 模板（PolyForm Noncommercial），不进本仓库，按 README 重建。
+/*
+!/.gitignore
+!/README.md
+!/src/
+/src/*
+!/src/paper/
+!/src/styleframe/
+!/src/common/
+/src/common/*
+!/src/common/timeline.ts
+!/src/common/subs.ts
+!/script/
+!/scripts/
+/scripts/*
+!/scripts/make_music.py
+!/scripts/pstill.sh
+!/scripts/review_sheets.py
+!/research/
+!/review/

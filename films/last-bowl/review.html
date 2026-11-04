@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>最后一碗面 · 风格帧</title>
+<style>
+  :root { --bg: #141418; --panel: #1d1d23; --line: #2c2c35; --text: #e8e6ef; --dim: #9a98a8; --accent: #e0b25c; --red: #d9505a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 -apple-system, "PingFang SC", "Noto Sans SC", sans-serif; }
+  header { max-width: 1400px; margin: 0 auto; padding: 28px 24px 8px; }
+  h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: .02em; }
+  .status { color: var(--dim); }
+  .status b { color: var(--accent); font-weight: 600; }
+  main { max-width: 1400px; margin: 0 auto; padding: 8px 24px 48px; display: grid; gap: 28px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .bar h2 { margin: 0; font-size: 17px; }
+  .bar .t { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .bar .sp { flex: 1; }
+  .bar button { background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+  .bar button[aria-pressed="true"] { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+  .shot { display: block; background: #000; }
+  .shot img { display: block; width: 100%; height: auto; }
+  .notes { padding: 12px 16px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 28px; font-size: 14px; }
+  .notes h3 { margin: 0 0 4px; font-size: 13px; color: var(--dim); font-weight: 600; }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes .fix li::marker { color: var(--red); }
+  .notes .keep li::marker { color: var(--accent); }
+  footer { max-width: 1400px; margin: 0 auto; padding: 0 24px 40px; color: var(--dim); font-size: 13px; }
+  @media (max-width: 760px) { header, main, footer { padding-left: 16px; padding-right: 16px; } .notes { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>《最后一碗面》风格帧</h1>
+  <div class="status" id="status"></div>
+</header>
+<main id="list"></main>
+<footer>点图片看原尺寸。「播放效果」是过了 CRT / 录像带后期的成片样子，「原图」是后期之前的画面。</footer>
+<script>
+// 每轮出新图后只改这里
+const ROUND = {
+  title: '第 4 轮',
+  status: '两位没看过前几版的评委打分：美术总监 <b>72</b>（上一轮 56），画风合规 <b>82</b>（上一轮 65）。自动修正到此为止，接下来由你定：可以就按这个风格做整片，哪里不对就指出来。下面「还可以再改」合并了我和两位评委的意见。',
+}
+const SHOTS = [
+  {
+    name: 'A · 暖灯', t: '2.0 秒', crt: 'stills/frames-r4/a_2.0.jpg', raw: 'stills/frames-r4/a_raw_2.0.jpg',
+    keep: ['窗里像落日的黄色半圆去掉了，换成雪夜街道', '台面上吊灯的暖光圈出来了；面粉是撒开的干粉', '碗摞立正，红沿是全画面最跳的颜色'],
+    fix: ['屋里还不够暖：墙偏紫灰，跟灯灭那张拉不开，「店又活了一次」不够亮', '玻璃上的反写字太亮、太灰，抢了灯的戏', '窗里路灯杆脚像倒在雪地上的第二个灯头；碗摞在光圈外却太白'],
+  },
+  {
+    name: 'A′ · 灯灭', t: '37.8 秒', crt: 'stills/frames-r4/a2_37.8.jpg', raw: 'stills/frames-r4/a2_raw_37.8.jpg',
+    keep: ['红碗沿成了冷画面里唯一的暖色', '路灯光斑、窗棂影、投到台面上的反写字', '右边改成叠好的旧布围裙'],
+    fix: ['红碗正好坐在窗棂影的起点上，720p 下像一只带柄的奶锅', '倒扣的面盆比光斑还亮，像个玻璃罩，抢了红碗', '叠好的围裙在 720p 下还是一块黑；灯绳太细，木珠像台面上放了颗球'],
+  },
+  {
+    name: 'S5 · 招牌镜头：面片透光', t: '13.8 秒', crt: 'stills/frames-r4/s5_13.8.jpg', raw: 'stills/frames-r4/s5_raw_13.8.jpg',
+    keep: ['重画后一眼能看出：两只拳头举着擀面杖，面皮后面是灯（灯泡加灯罩口的暗环）', '面皮边缘透出红橙色的光，灯绳木珠从下面垂下来'],
+    fix: ['墨绿的灯罩圈压在面皮上面，像贴上去的圈（两位评委都提了）：应该是透过面皮看到的影子', '最亮的那块被冲成一团白；面皮厚边和深色斑像烙饼', '擀面杖太细像窗帘杆；两边袖口在画面中段太抢眼'],
+  },
+  {
+    name: '老师傅的手 · 设定图', t: '第 4 轮版', crt: 'stills/hands/crt_2.jpg', raw: 'stills/hands/raw_2.jpg',
+    keep: ['宽掌短粗指、三块老茧、发黄的袖口', '暖灯 / 灯灭斑外 / 斑内 / 剪影四套色票', '「lift 托杖举起」那格换成了 S5 的新画法'],
+    fix: [],
+  },
+]
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+document.getElementById('status').innerHTML = `${ROUND.title} · ${ROUND.status}`
+document.getElementById('list').innerHTML = SHOTS.map((s, i) => `
+  <section>
+    <div class="bar">
+      <h2>${esc(s.name)}</h2><span class="t">${esc(s.t)}</span><span class="sp"></span>
+      <button data-i="${i}" data-v="crt" aria-pressed="true">播放效果</button>
+      <button data-i="${i}" data-v="raw" aria-pressed="false">原图</button>
+    </div>
+    <a class="shot" id="a${i}" href="${s.crt}" target="_blank"><img id="img${i}" src="${s.crt}" alt="${esc(s.name)}" loading="lazy"></a>
+    <div class="notes">
+      <div><h3>保留</h3><ul class="keep">${s.keep.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
+      <div><h3>还可以再改</h3>${s.fix.length ? `<ul class="fix">${s.fix.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p style="margin:0;color:var(--dim)">暂无</p>'}</div>
+    </div>
+  </section>`).join('')
+document.addEventListener('click', e => {
+  const b = e.target.closest('button[data-v]')
+  if (!b) return
+  const i = b.dataset.i, src = SHOTS[i][b.dataset.v]
+  document.getElementById('img' + i).src = src
+  document.getElementById('a' + i).href = src
+  b.parentNode.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b))
+})
+</script>
+</body>
+</html>

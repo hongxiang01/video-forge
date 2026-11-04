@@ -1,0 +1,18 @@
+Content License — Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Copyright (c) 2026 hongxiang01
+
+Applies to the non-code content of this repository: work write-ups, narration
+scripts, storyboards, retrospectives, style cards, screenshots and images,
+unless a file states otherwise.
+
+You are free to share and adapt this material for any purpose, even
+commercially, as long as you give appropriate credit, provide a link to the
+license, and indicate if changes were made.
+
+Full legal code: https://creativecommons.org/licenses/by/4.0/legalcode
+
+Third-party material keeps its own license:
+- 样片墙/ images: from lemo-opuscar by LemoLab (films CC BY 4.0, code MIT),
+  https://github.com/lemomo-ai/lemo-opuscar
+- External dependencies listed in 依赖.json keep their original licenses.
