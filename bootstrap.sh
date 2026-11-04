@@ -11,10 +11,10 @@ NOPROXY=(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_pr
 rows=$(python3 -I -c '
 import json,os,sys
 d=json.load(open(sys.argv[1],encoding="utf-8"))["deps"]
-for x in d: print(x["id"],x["need"],x["mode"],x["url"],x["ref"],os.path.expanduser(x["path"]),sep="\t")
+for x in d: print(x["id"],x["need"],x["mode"],x["url"],x["ref"],os.path.expanduser(x["path"]),sep="|")
 ' "$ROOT/deps.json")
 want=("$@"); [ ${#want} -eq 0 ] && want=(core)
-echo "$rows" | while IFS=$'\t' read id need mode url ref p; do
+echo "$rows" | while IFS="|" read id need mode url ref p; do
   sel=0
   for w in $want; do [[ $w == all || $w == check || $w == $id || ( $w == core && $need == core ) ]] && sel=1; done
   [ $sel = 1 ] || continue
@@ -23,7 +23,9 @@ echo "$rows" | while IFS=$'\t' read id need mode url ref p; do
   echo "↓ $id  → $p"
   mkdir -p "$(dirname "$p")"
   repo=${url#https://github.com/}
-  if [ $mode = sparse ]; then
+  if [ $mode = file ]; then
+    curl -fsSL --noproxy '*' --max-time 600 "$url" -o "$p"
+  elif [ $mode = sparse ]; then
     $NOPROXY git -c http.version=HTTP/1.1 clone --filter=blob:none --sparse "$url" "$p"
     git -C "$p" checkout -q "$ref" 2>/dev/null || true
     echo "  稀疏克隆完成：用 git -C $p sparse-checkout add styles/<slug> 拉具体画风"

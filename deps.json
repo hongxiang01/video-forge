@@ -64,6 +64,16 @@
       "mode": "tarball",
       "uses": "音乐 MV 产线 skill（听歌、逐字对齐、分镜、canvas 逐帧渲染、卡点检查）；video-forge 的 MV 产线调用它",
       "note": "装在 skills 目录下，路径不要挪。"
+    },
+    {
+      "id": "generaluser-gs",
+      "need": "opt",
+      "url": "https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/main/GeneralUser-GS.sf2",
+      "ref": "v2.0.3",
+      "license": "GeneralUser GS License v2.0（个人与商用均可）",
+      "path": "~/.local/share/soundfonts/GeneralUser-GS.sf2",
+      "mode": "file",
+      "uses": "代码作曲的采样音色库（tools/music/code_score.py 用 FluidSynth 渲染）；另需 brew install fluid-synth"
     }
   ]
 }

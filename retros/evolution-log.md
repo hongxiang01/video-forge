@@ -38,3 +38,21 @@
 - `skill/references/pipeline-explainer.md`：新增「留存设计」（前 3 秒、第 1 分钟兑现、每 60–90 秒再钩、至少一处值得回看、3 个封面 + 3 个标题）。
 - `skill/references/review-standards.md`：新增 K12 再钩节奏、K13 值得回看。
 - `skill/SKILL.md` 归档步骤：发布约一周后回填平台数据到 `scores.md`，复盘里写哪个留存设计起作用。
+
+## 第 3 轮（2026-11-05）：配乐
+
+用户反馈："目前 AI 生成音乐效果不太好，看看有没有什么办法，可以通过其他小模型或者其他方法去生成一下。"；"不要光看抖音，去看 YouTube、国外的内容"。
+
+**参考（3 个，均为国外）**
+- ACE-Step 1.5（开源音乐模型，MIT，<4GB 显存，2026 年开源最强）。来源：[arXiv 2602.00744](https://arxiv.org/pdf/2602.00744)、[DEV 指南](https://dev.to/czmilo/ace-step-15-the-complete-2026-guide-to-open-source-ai-music-generation-522e)、[Spheron 部署对比](https://www.spheron.network/blog/deploy-open-source-ai-music-generation-gpu-cloud-2026/)
+- 免版税曲库现状（YouTube 音频库、Pixabay Music；CC 曲目要署名）。来源：[Foxi Music 2026 指南](https://www.foximusic.com/blog/what-background-music-can-i-use-on-youtube-guide/)
+- FluidSynth + SoundFont 渲染 MIDI（midi2audio / pyFluidSynth）。来源：[midi2audio](https://pypi.org/project/midi2audio)、[FluidSynth](https://www.fluidsynth.org/)；音色库 [GeneralUser GS](https://github.com/mrbumpy409/GeneralUser-GS)（可商用）
+
+**实测**
+- 新做 `tools/music/code_score.py`：代码写 MIDI（钢琴分解和弦 / 弦乐铺底 / 贝斯 / 轻鼓，intro→build→main→outro）→ FluidSynth + GeneralUser GS 渲染，同时导出 beats.json（每拍、每小节、段落的秒数与帧号）。
+- 对比试听：`works/ai-howto/music-test/old-vs-new.mp3`（前 30 秒旧 numpy 合成，后 30 秒新版）。**听感待用户判断**。
+- ACE-Step 1.5 未实测（数 GB 模型，Mac 可用性待验证）。
+
+**写回 skill 的改动**
+- 新增 `skill/references/music.md`：按需求选路（卡拍→代码作曲；真人质感→免版税曲库/平台曲库；整曲风格→ACE-Step；音效→Stable Audio Open），用法与审片。
+- `deps.json` 登记 GeneralUser GS；`bootstrap.sh` 支持单文件下载，并修复空字段导致的解析错位。
