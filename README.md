@@ -3,6 +3,7 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-skill-D97757?logo=anthropic&logoColor=white)](https://claude.com/claude-code)
 [![Remotion](https://img.shields.io/badge/Remotion-4.0-0B84F3)](https://remotion.dev)
 [![Code License](https://img.shields.io/badge/code-MIT-green)](LICENSE)
+[![Site](https://img.shields.io/badge/site-github.io-E2552B)](https://hongxiang01.github.io/video-forge/)
 [![Content License](https://img.shields.io/badge/content-CC%20BY%204.0-lightgrey)](LICENSE-CONTENT)
 
 **一句话想法进来，画风视频出去。** video-forge 是一个 [Claude Code](https://claude.com/claude-code) skill，加上一个作品库，负责画风短片、音乐 MV、科普动画和三维微缩场景。画面全部用代码绘制（Remotion / canvas / three.js），不用生成式视频模型。
@@ -12,7 +13,9 @@
 - 生产交给现成的开源库（[lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar) 66 种画风、[huashu-art-motion](https://github.com/alchaincyf/huashu-art-motion) 艺术风格、[video-talkcraft](https://github.com/Vincentwei1021/video-talkcraft) 动效卡、[anything2explainer](https://github.com/hongxiang01/anything2explainer) 讲解片流水线）；
 - 做完由独立评委按**你定的标准**逐条审片，最后归档、复盘。
 
-![《AI 到底该怎么用》画面](assets/ai-howto-grid.jpg)
+[![《AI 到底该怎么用》画面（点击在线观看）](assets/ai-howto-grid.jpg)](https://hongxiang01.github.io/video-forge/)
+
+**在线观看作品和画风样片墙：<https://hongxiang01.github.io/video-forge/>**
 
 ## ✨ 亮点
 

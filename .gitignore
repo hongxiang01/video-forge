@@ -30,3 +30,6 @@ works/rainy-corner-diorama/screenshots/r[0-8]-*
 works/rainy-corner-diorama/screenshots/v*-*
 .workflow/
 works/rainy-corner-diorama/screenshots/dbg-*
+
+# 例外：压缩过的预览视频要进仓库（GitHub Pages 播放用，每个 ≤10MB）
+!assets/previews/*.mp4
