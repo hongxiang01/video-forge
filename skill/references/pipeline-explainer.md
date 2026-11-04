@@ -1,0 +1,29 @@
+# 产线：科普 / 信息视频（Remotion）
+
+项目：`~/remotion-effects`（Remotion 4，特效注册在 `effects/`，时间轴 JSON 用 `at()` 锚点）。参考作品：王朝 300 年 `effects/dynasty-300/`，上游脚本 `pipeline/dynasty-300/`（README 有每个脚本的用法）。改代码前按项目约定和全局规则先 `maestro search` / `maestro load`。
+
+## 适合
+
+讲清一件事：历史、地理、数据、原理、流程。不适合有人物情绪的故事（走画风视频或 MV）。画风可以借 lemo 的信息类画风（白板、黑板、等距信息图、数据叙事、卫星简报）的规则。
+
+## 追问追加
+
+- 观众是谁、懂多少；
+- 核心论点一句话 + 3 个支撑事实；每个事实的来源；
+- 要不要地图、图表、时间线；
+- 配音还是纯字幕。
+
+## 步骤
+
+1. 需求卡 → `pipeline/<作品>/brief.json`。
+2. 画风卡 + 风格帧。
+3. 文案：逐句写进 `script.json`，**每句都要有对应画面**（地图在动、数字在变、对比在发生），不许整屏文字。
+4. 分镜：`storyboard.json`（每句：画面、动画、时长），出静帧联系表（`review/stills.cjs` + `review/sheet.py`），用户确认。
+5. 配音（`tts.py`，edge-tts）→ 逐句时长 → 时间轴按配音锚定 → 配乐混音（`build_audio.py`）。
+6. 动画实现与渲染。
+7. 评委循环（`review.md`），静帧联系表 + 成片。
+8. 归档：脚本留在 `pipeline/<作品>/`，`~/video-forge/works/` 下写 README 指过去。
+
+## 之前的教训
+
+见 `~/video-forge/retros/dynasty-300-explainer.md`：第 1 版「全是文字介绍，太空洞了」；脚本放临时目录差点丢。

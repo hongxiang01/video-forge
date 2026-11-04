@@ -1,0 +1,39 @@
+# 画风推荐与新手引导
+
+## 用户不知道选什么画风
+
+0. 先查 `~/video-forge/index/catalog.md`：lemo 66 种 + 花叔艺术风格（看质量星级，研究配方不当成熟能力）+ 自己的画风，按用途/类型筛候选。
+1. 先让用户打开样片墙：`~/video-forge/gallery/index.html`（本地，直接播放样片；`open` 命令打开即可）。顶部「我想做…」按用途筛（新闻、科普、历史、品牌、儿童、城市、MV、情感、节日、游戏……）。数据变了就 `python3 ~/video-forge/gallery/build.py` 重建；`build.py artifact` 生成内嵌缩略图的单文件版，可发布成 Artifact。
+2. 按需求卡的主题和情绪推荐 2–3 个，每个写一句「为什么适合」+ 样片链接 `https://lemomo-ai.github.io/lemo-opuscar/films/<slug>.mp4`。
+3. 同时在对话里列出全部 66 种（列表在 `~/mv-xue/lemo-opuscar/AGENTS.md` 的 style-list 段，中文用户只列中文名，不删不并不改名），给官方画廊 https://lemomo-ai.github.io/lemo-opuscar/ 。
+4. 用纯文字问用户选哪个（不用 `AskUserQuestion`，选项太少会藏掉列表）。
+5. 用户自己的画风优先：`~/video-forge/my-styles/` 和 `~/lemo-my-styles/` 有内容时先列。
+
+## 常见需求 → 推荐
+
+| 想要的感觉 | 先推荐 |
+|---|---|
+| 日系动画、怀旧、城市夜景 | 80 年代赛璐璐动画 `cel-anime-80s`；三维的话用 `~/video-forge/recipes/toon-diorama.md` |
+| 温暖、童趣、睡前故事 | 蜡笔儿童绘本 `crayon-book`、水彩笔刷 `watercolor` |
+| 中国风、诗词、历史 | 中国水墨 `ink-wash`、皮影戏 `shadow-puppet`、红色窗花剪纸 `papercut-red` |
+| 一个地方、一座城、季节变化 | 孟菲斯微缩景观 `memphis-diorama`、移轴微缩 `tilt-shift`、低多边形等距 `lowpoly-island` |
+| 讲道理、知识、步骤 | 白板讲解 `whiteboard`、黑板粉笔 `chalkboard`、等距信息图 `iso-infographic` |
+| 产品、科技发布 | 暗色科技发布 `dark-keynote`、玻璃质感产品 `glass-product` |
+| 新闻、数据、调查 | 字幕新闻 `caption-news`、视觉调查 `visual-investigation`、数据叙事 `dataviz` |
+| 游戏感、复古 | 16-bit 像素 RPG `pixel-rpg`、HD-2D `hd-2d` |
+| 一镜到底、纸艺 | 印刷长镜头 `printed-long-take`、纸雕灯影 `paper-lantern`、纸片立体书 `paper-popup` |
+
+slug 以 `~/mv-xue/lemo-opuscar/styleboard/catalog.json` 为准；表里没写 slug 的去 catalog 查。
+
+## 用户不知道拍什么内容
+
+给 3–5 个内容点子，每个一句话 + 适配画风，点子要具体到画面：
+
+- **身边的一天**：一家早餐店从凌晨 4 点到 9 点（孟菲斯微缩 / 延时交响）。
+- **一个数字背后的故事**：家乡一条街十年换了几家店（数据叙事 / 字幕新闻）。
+- **一句诗的画面**：选一首诗，一句一景（中国水墨 / 皮影戏）。
+- **给某个人的短片**：生日、毕业、告别，只拍物件不拍人（纸片立体书 / 水彩笔刷）。
+- **一个东西怎么做出来**：一杯咖啡从豆子到杯子（产品拆解 / 等距信息图）。
+- **一个地方的夜**：雨夜便利店、末班车站（80 年代赛璐璐 / 三渲二微缩）。
+
+点子选中后回到追问清单，把它问细。

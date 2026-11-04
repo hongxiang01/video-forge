@@ -1,5 +1,5 @@
-# 外部依赖：不进仓库，靠 依赖.json + bootstrap.sh 拉取
-参考/
+# 外部依赖：不进仓库，靠 deps.json + bootstrap.sh 拉取
+vendor/
 
 # 大文件与可重新生成的产物（只留在本机）
 *.mp4
@@ -16,17 +16,17 @@ stills/
 out/
 films/*/audio/
 films/*/stills/
-作品/*/video/public/assets/
-作品/*/video/review/*/judge_*/
-作品/*/video/review/*/SC*_*.jpg
-作品/*/video/audio/cache/
-作品/*/音色试听/
+works/*/video/public/assets/
+works/*/video/review/*/judge_*/
+works/*/video/review/*/SC*_*.jpg
+works/*/video/audio/cache/
+works/*/voice-samples/
 __pycache__/
 .DS_Store
 # 模板自带字体（anything2explainer，OFL），新建项目时会重新带上
-作品/*/video/public/fonts/
+works/*/video/public/fonts/
 # 迭代过程截图只留最后一轮
-作品/雨夜便利店街角/截图/r[0-8]-*
-作品/雨夜便利店街角/截图/v*-*
+works/rainy-corner-diorama/screenshots/r[0-8]-*
+works/rainy-corner-diorama/screenshots/v*-*
 .workflow/
-作品/雨夜便利店街角/截图/dbg-*
+works/rainy-corner-diorama/screenshots/dbg-*

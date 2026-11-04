@@ -91,7 +91,7 @@ def main():
     while True:
         msg = check(d, stall)
         if msg:
-            print(f'✗ 卡住：{msg}\n  处理：停掉工作流，按 references/分工.md 把这一步拆小后重跑（已完成的 agent 用 resumeFromRunId 复用）。')
+            print(f'✗ 卡住：{msg}\n  处理：停掉工作流，按 references/division-of-labor.md 把这一步拆小后重跑（已完成的 agent 用 resumeFromRunId 复用）。')
             sys.exit(2)
         if finished(d):
             print('✓ 工作流已结束，没有发现卡住的 agent')

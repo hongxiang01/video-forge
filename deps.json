@@ -1,0 +1,69 @@
+{
+  "说明": "外部依赖清单。别人的仓库不复制进本仓库，只记来源、锁定版本、许可和我们用到什么；缺了就运行 bash bootstrap.sh <id>。need: core=画风/科普产线离不开，opt=用到时再拉。",
+  "deps": [
+    {
+      "id": "lemo-opuscar",
+      "need": "core",
+      "url": "https://github.com/lemomo-ai/lemo-opuscar",
+      "ref": "bebbbe1aa92a",
+      "license": "MIT（代码）/ CC BY 4.0（样片）",
+      "path": "~/mv-xue/lemo-opuscar",
+      "mode": "sparse",
+      "uses": "66 种画风（styles/<slug>/STYLE.md + 场景代码）、core/ 渲染内核、styleboard/catalog.json 画风目录；样片墙的影片与截图",
+      "note": "稀疏克隆，只拉用到的画风：git -C <path> sparse-checkout add styles/<slug>。mv-director 也引用这个路径，不要挪。"
+    },
+    {
+      "id": "huashu-art-motion",
+      "need": "core",
+      "url": "https://github.com/alchaincyf/huashu-art-motion",
+      "ref": "8a0d7d72ca65",
+      "license": "MIT",
+      "path": "~/video-forge/vendor/huashu-art-motion",
+      "mode": "tarball",
+      "uses": "53 张艺术风格配方卡（references/风格配方/，看 INDEX.md 的质量星级与实做/研究状态）、9 种解说动画语法（Kurzgesagt/Vox/3B1B/白板…）、scripts/engine 绘画动画库"
+    },
+    {
+      "id": "video-talkcraft",
+      "need": "opt",
+      "url": "https://github.com/Vincentwei1021/video-talkcraft",
+      "ref": "a7c29edfb240",
+      "license": "PolyForm Noncommercial 1.0（商用需作者授权）",
+      "path": "~/video-forge/vendor/video-talkcraft",
+      "mode": "tarball",
+      "uses": "108 张口播动效卡（references/cards-index.json 按语义选卡，template/cards/*.tsx）、相机/转场/长镜头系统、静止检测等质检脚本",
+      "note": "非商业许可：代码不复制进本仓库；我们移植的只是思路与参数（自己重写）。"
+    },
+    {
+      "id": "anything2explainer",
+      "need": "opt",
+      "url": "https://github.com/hongxiang01/anything2explainer",
+      "ref": "735c79c8724e",
+      "license": "PolyForm Noncommercial 1.0（商用需作者授权）",
+      "path": "~/video-forge/vendor/anything2explainer",
+      "mode": "tarball",
+      "uses": "科普片流水线：template/ 建项目、scripts/tts_build.py 配音时间轴、reference/narration-guidance.md 文案写法、lessons.md 踩坑",
+      "note": "非商业许可，同上。"
+    },
+    {
+      "id": "huashu-motion",
+      "need": "opt",
+      "url": "https://github.com/alchaincyf/huashu-motion",
+      "ref": "52467f99c602",
+      "license": "MIT",
+      "path": "~/video-forge/vendor/huashu-motion",
+      "mode": "tarball",
+      "uses": "产品宣传片产线（会作曲、可指着画面改）；做广告类时再拉"
+    },
+    {
+      "id": "mv-director",
+      "need": "opt",
+      "url": "https://github.com/Yari-tuber/mv-director",
+      "ref": "",
+      "license": "MIT",
+      "path": "~/.claude/skills/mv-director",
+      "mode": "tarball",
+      "uses": "音乐 MV 产线 skill（听歌、逐字对齐、分镜、canvas 逐帧渲染、卡点检查）；video-forge 的 MV 产线调用它",
+      "note": "装在 skills 目录下，路径不要挪。"
+    }
+  ]
+}

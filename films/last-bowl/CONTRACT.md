@@ -12,7 +12,7 @@
 ## 必读
 
 - `TREATMENT.md`：§4.1 主构图布局（坐标全在这里）、§4.2 手的设定、§4.3 色指定、§4.4 面的画法、§9 风险镜头与附 1–3（热气、雪）
-- `风格卡.md`，以及画风规则 `~/mv-xue/lemo-opuscar/styles/cel-anime-80s/STYLE.md`（不变式，不许违反）
+- `style-card.md`，以及画风规则 `~/mv-xue/lemo-opuscar/styles/cel-anime-80s/STYLE.md`（不变式，不许违反）
 - 技法参考（只学画法，不搬故事和镜头）：`~/mv-xue/lemo-opuscar/styles/cel-anime-80s/demo/` 里的 `cel.js`、`bg.js`、`fx.js`、`hands.js`、`post.js`
 
 ## 共用文件（只读，不许改）

@@ -1,5 +1,5 @@
 #!/bin/zsh
-# 拉取外部依赖（读 依赖.json）。用法：
+# 拉取外部依赖（读 deps.json）。用法：
 #   bash bootstrap.sh            # 只拉 need=core 的
 #   bash bootstrap.sh all        # 全部
 #   bash bootstrap.sh <id> ...   # 指定
@@ -12,7 +12,7 @@ rows=$(python3 -I -c '
 import json,os,sys
 d=json.load(open(sys.argv[1],encoding="utf-8"))["deps"]
 for x in d: print(x["id"],x["need"],x["mode"],x["url"],x["ref"],os.path.expanduser(x["path"]),sep="\t")
-' "$ROOT/依赖.json")
+' "$ROOT/deps.json")
 want=("$@"); [ ${#want} -eq 0 ] && want=(core)
 echo "$rows" | while IFS=$'\t' read id need mode url ref p; do
   sel=0
@@ -35,4 +35,4 @@ echo "$rows" | while IFS=$'\t' read id need mode url ref p; do
   fi
   echo "✓ $id"
 done
-[[ " $want " == *" check "* ]] || python3 "$ROOT/索引/build_index.py"
+[[ " $want " == *" check "* ]] || python3 "$ROOT/index/build_index.py"
