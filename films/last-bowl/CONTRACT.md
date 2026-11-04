@@ -43,7 +43,7 @@
 
 ```sh
 cd ~/mv-xue/lemo-opuscar && env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
-  node core/render/still.mjs ~/style-studio/films/last-bowl <秒> --q 'test=<模块名>' --out ~/style-studio/films/last-bowl/stills/<模块名>
+  node core/render/still.mjs ~/video-forge/films/last-bowl <秒> --q 'test=<模块名>' --out ~/video-forge/films/last-bowl/stills/<模块名>
 ```
 
 渲染完用 Read 打开 jpg **亲眼看**，对照 TREATMENT 和画风规则改，至少看 2 轮。加 `--q 'test=hands&raw=1'` 可跳过 CRT 看原图。页面报错时工具会停下并打印错误。

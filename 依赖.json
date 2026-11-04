@@ -18,7 +18,7 @@
       "url": "https://github.com/alchaincyf/huashu-art-motion",
       "ref": "8a0d7d72ca65",
       "license": "MIT",
-      "path": "~/style-studio/参考/huashu-art-motion",
+      "path": "~/video-forge/参考/huashu-art-motion",
       "mode": "tarball",
       "uses": "53 张艺术风格配方卡（references/风格配方/，看 INDEX.md 的质量星级与实做/研究状态）、9 种解说动画语法（Kurzgesagt/Vox/3B1B/白板…）、scripts/engine 绘画动画库"
     },
@@ -28,7 +28,7 @@
       "url": "https://github.com/Vincentwei1021/video-talkcraft",
       "ref": "a7c29edfb240",
       "license": "PolyForm Noncommercial 1.0（商用需作者授权）",
-      "path": "~/style-studio/参考/video-talkcraft",
+      "path": "~/video-forge/参考/video-talkcraft",
       "mode": "tarball",
       "uses": "108 张口播动效卡（references/cards-index.json 按语义选卡，template/cards/*.tsx）、相机/转场/长镜头系统、静止检测等质检脚本",
       "note": "非商业许可：代码不复制进本仓库；我们移植的只是思路与参数（自己重写）。"
@@ -39,7 +39,7 @@
       "url": "https://github.com/hongxiang01/anything2explainer",
       "ref": "735c79c8724e",
       "license": "PolyForm Noncommercial 1.0（商用需作者授权）",
-      "path": "~/style-studio/参考/anything2explainer",
+      "path": "~/video-forge/参考/anything2explainer",
       "mode": "tarball",
       "uses": "科普片流水线：template/ 建项目、scripts/tts_build.py 配音时间轴、reference/narration-guidance.md 文案写法、lessons.md 踩坑",
       "note": "非商业许可，同上。"
@@ -50,7 +50,7 @@
       "url": "https://github.com/alchaincyf/huashu-motion",
       "ref": "52467f99c602",
       "license": "MIT",
-      "path": "~/style-studio/参考/huashu-motion",
+      "path": "~/video-forge/参考/huashu-motion",
       "mode": "tarball",
       "uses": "产品宣传片产线（会作曲、可指着画面改）；做广告类时再拉"
     },
@@ -62,7 +62,7 @@
       "license": "MIT",
       "path": "~/.claude/skills/mv-director",
       "mode": "tarball",
-      "uses": "音乐 MV 产线 skill（听歌、逐字对齐、分镜、canvas 逐帧渲染、卡点检查）；style-studio 的 MV 产线调用它",
+      "uses": "音乐 MV 产线 skill（听歌、逐字对齐、分镜、canvas 逐帧渲染、卡点检查）；video-forge 的 MV 产线调用它",
       "note": "装在 skills 目录下，路径不要挪。"
     }
   ]

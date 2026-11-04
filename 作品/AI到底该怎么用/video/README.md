@@ -21,8 +21,8 @@
 工程骨架来自 [anything2explainer](https://github.com/hongxiang01/anything2explainer) 的模板（PolyForm Noncommercial 许可，所以不收进本仓库）：
 
 ```bash
-bash ~/style-studio/bootstrap.sh anything2explainer
-zsh ~/style-studio/参考/anything2explainer/template/scripts/new_project.sh /tmp/ai-howto ai-howto
+bash ~/video-forge/bootstrap.sh anything2explainer
+zsh ~/video-forge/参考/anything2explainer/template/scripts/new_project.sh /tmp/ai-howto ai-howto
 cp -R src/paper src/styleframe /tmp/ai-howto/src/
 cp src/common/timeline.ts src/common/subs.ts /tmp/ai-howto/src/common/
 cp -R script scripts /tmp/ai-howto/

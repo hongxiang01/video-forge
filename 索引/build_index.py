@@ -2,7 +2,7 @@
 """统一总目录：把各个画风库 / 动效库 / 自己的画风合成一份索引。
 输出：索引/index.json（机器读）+ 索引/总目录.md（人读）。
 数据来源与路径都读 依赖.json；某个库本机没有时跳过并在总目录里标出"未下载"。
-用法：python3 ~/style-studio/索引/build_index.py
+用法：python3 ~/video-forge/索引/build_index.py
 """
 import json, os, re, glob
 
@@ -103,7 +103,7 @@ json.dump({'missing': missing, 'items': items}, open(f'{ROOT}/索引/index.json'
 
 # ── 人读版 ──
 order = ['方案', '画风', '解说语法', '动效', '流程']
-L = ['# 总目录（自动生成，勿手改；重建：`python3 ~/style-studio/索引/build_index.py`）', '']
+L = ['# 总目录（自动生成，勿手改；重建：`python3 ~/video-forge/索引/build_index.py`）', '']
 L.append('| 类型 | 数量 | 来源 |')
 L.append('|---|---|---|')
 for t in order:
@@ -111,7 +111,7 @@ for t in order:
     if xs:
         L.append(f"| {t} | {len(xs)} | {'、'.join(sorted(set(i['src'] for i in xs)))} |")
 if missing:
-    L += ['', f"**未下载的库**：{'、'.join(missing)}（运行 `bash ~/style-studio/bootstrap.sh <库id>`）"]
+    L += ['', f"**未下载的库**：{'、'.join(missing)}（运行 `bash ~/video-forge/bootstrap.sh <库id>`）"]
 L += ['', '许可：MIT / CC BY 可商用（注明出处）；PolyForm NC 仅非商业，代码不复制进本仓库。', '']
 for t in order:
     xs = [i for i in items if i['type'] == t]

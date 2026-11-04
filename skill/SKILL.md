@@ -1,9 +1,9 @@
 ---
-name: style-studio
-description: 风格工作室总入口：画风视频、音乐 MV、科普动画、三维微缩场景都从这里进。先追问到每个细节（场景、人物、情绪、结构、声音、禁忌），不知道选什么就给样片墙和内容点子；画风写成数值卡让用户确认，分镜联系表确认后才生产；做完交给独立子 agent 评委打分迭代，最后归档到 ~/style-studio。用户说「做个视频」「做个动画」「做 MV」「画风视频」「做个微缩场景」「用 XX 方案做」「不知道做什么画风」时用。
+name: video-forge
+description: 成片工坊总入口：画风视频、音乐 MV、科普动画、三维微缩场景都从这里进。先追问到每个细节（场景、人物、情绪、结构、声音、禁忌），不知道选什么就给样片墙和内容点子；画风写成数值卡让用户确认，分镜联系表确认后才生产；做完交给独立子 agent 评委打分迭代，最后归档到 ~/video-forge。用户说「做个视频」「做个动画」「做 MV」「画风视频」「做个微缩场景」「用 XX 方案做」「不知道做什么画风」时用。
 ---
 
-# 风格工作室（style-studio）
+# 成片工坊（video-forge）
 
 好作品不是一句话生成的。这个 skill 管住三件事：
 
@@ -24,14 +24,14 @@ description: 风格工作室总入口：画风视频、音乐 MV、科普动画�
 7. **人物不演戏**：代码画的表情、手部动作必僵。除非产线有角色绑定能力，人物只做小、远、静止或简单循环。
 8. **用户原话进卡片**：用户说过的具体要求（比如「灯光不要拍扁」）原文写进需求卡的禁区或硬要求。
 9. **大任务按职责分给多个 agent**（`references/分工.md`）：先定骨架文件，各职责只引用编号，算术用脚本校验；不靠降低思考强度来避免超时。
-10. **作品归档到 `~/style-studio`**，不放临时目录；临时目录重启会丢。
+10. **作品归档到 `~/video-forge`**，不放临时目录；临时目录重启会丢。
 11. 网络：这台机器的代理极慢，大下载用 `curl --noproxy '*'`、`env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY` 绕开；shell 里 `grep` 坏了时用 `/usr/bin/grep`。
 
 ## 步骤
 
 ### 0. 分流
 
-先看 `~/style-studio/方案/`：用户点名方案（「用三渲二微缩方案做个车站」），读方案文件，追问只问方案没定的项。
+先看 `~/video-forge/方案/`：用户点名方案（「用三渲二微缩方案做个车站」），读方案文件，追问只问方案没定的项。
 
 否则按需求选产线：
 
@@ -72,7 +72,7 @@ description: 风格工作室总入口：画风视频、音乐 MV、科普动画�
 
 ### 7. 归档
 
-在 `~/style-studio/作品/<作品名>/` 放：源码或项目链接、成片/截图、需求卡、风格卡、分镜、`评分记录.md`；在 `~/style-studio/复盘/` 写复盘；路子可复用就从 `方案/_模板.md` 写一份新方案，并在 `~/style-studio/README.md` 的「🎞 作品」表加一行；用到新的外部库就登记进 `依赖.json` 并重建 `索引/`。
+在 `~/video-forge/作品/<作品名>/` 放：源码或项目链接、成片/截图、需求卡、风格卡、分镜、`评分记录.md`；在 `~/video-forge/复盘/` 写复盘；路子可复用就从 `方案/_模板.md` 写一份新方案，并在 `~/video-forge/README.md` 的「🎞 作品」表加一行；用到新的外部库就登记进 `依赖.json` 并重建 `索引/`。
 
 ## 参考文件
 
@@ -86,8 +86,8 @@ description: 风格工作室总入口：画风视频、音乐 MV、科普动画�
 | | [references/产线-科普.md](references/产线-科普.md) | 用 Remotion 做信息、科普视频 |
 | | [references/产线-微缩.md](references/产线-微缩.md) | 做 three.js 三维微缩场景 |
 | 3–6 分工 | [references/分工.md](references/分工.md) | 用多个 agent 写 Treatment 或做生产时：职责划分、骨架文件、校验脚本 |
-| 选画风 / 选动效 | `~/style-studio/索引/总目录.md`（`index.json` 机读） | 所有画风库、动效卡、解说语法、自己的画风合在一张表；缺库运行 `bash ~/style-studio/bootstrap.sh <id>` |
+| 选画风 / 选动效 | `~/video-forge/索引/总目录.md`（`index.json` 机读） | 所有画风库、动效卡、解说语法、自己的画风合在一张表；缺库运行 `bash ~/video-forge/bootstrap.sh <id>` |
 | 1 / 6 评审 | [references/评审标准库.md](references/评审标准库.md) | 追问时按视频类型给默认检查项，和用户一起定评审标准卡 |
 | 6 评审 | [references/评审.md](references/评审.md) | 开评委、逐条判定、决定停不停 |
 | 排错 | [references/排错.md](references/排错.md) | 装依赖、渲染、截图、网络出问题 |
-| 归档 | `~/style-studio/README.md`、`~/style-studio/方案/_模板.md` | 做完以后 |
+| 归档 | `~/video-forge/README.md`、`~/video-forge/方案/_模板.md` | 做完以后 |

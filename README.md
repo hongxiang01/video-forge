@@ -1,11 +1,11 @@
-# 风格工作室 · style-studio
+# 成片工坊 · video-forge
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-skill-D97757?logo=anthropic&logoColor=white)](https://claude.com/claude-code)
 [![Remotion](https://img.shields.io/badge/Remotion-4.0-0B84F3)](https://remotion.dev)
 [![Code License](https://img.shields.io/badge/code-MIT-green)](LICENSE)
 [![Content License](https://img.shields.io/badge/content-CC%20BY%204.0-lightgrey)](LICENSE-CONTENT)
 
-**一句话想法进来，画风视频出去。** style-studio 是一个 [Claude Code](https://claude.com/claude-code) skill，加上一个作品库，负责画风短片、音乐 MV、科普动画和三维微缩场景。画面全部用代码绘制（Remotion / canvas / three.js），不用生成式视频模型。
+**一句话想法进来，画风视频出去。** video-forge 是一个 [Claude Code](https://claude.com/claude-code) skill，加上一个作品库，负责画风短片、音乐 MV、科普动画和三维微缩场景。画面全部用代码绘制（Remotion / canvas / three.js），不用生成式视频模型。
 
 它不自己发明画风和动效，而是当**导演和关卡**：
 - 先追问到每个细节，画风、分镜确认后才开工；
@@ -34,10 +34,10 @@
 ## 🚀 快速开始
 
 ```bash
-git clone git@github.com:hongxiang01/style-studio.git ~/style-studio
-ln -s ~/style-studio/skill ~/.claude/skills/style-studio   # 让 Claude Code 加载 skill
-bash ~/style-studio/bootstrap.sh                            # 拉取核心依赖（lemo-opuscar、huashu-art-motion）
-bash ~/style-studio/bootstrap.sh check                      # 查看哪些依赖已就位
+git clone git@github.com:hongxiang01/video-forge.git ~/video-forge
+ln -s ~/video-forge/skill ~/.claude/skills/video-forge   # 让 Claude Code 加载 skill
+bash ~/video-forge/bootstrap.sh                            # 拉取核心依赖（lemo-opuscar、huashu-art-motion）
+bash ~/video-forge/bootstrap.sh check                      # 查看哪些依赖已就位
 ```
 
 然后在 Claude Code 里说「做个视频」「做 MV」「做个微缩场景」「用 XX 方案做一个…」，或者「不知道做什么画风」。
@@ -58,8 +58,8 @@ bash ~/style-studio/bootstrap.sh check                      # 查看哪些依赖
 ## 📦 仓库里有什么
 
 ```
-style-studio/
-├── skill/                 # Claude Code skill（软链到 ~/.claude/skills/style-studio）
+video-forge/
+├── skill/                 # Claude Code skill（软链到 ~/.claude/skills/video-forge）
 │   ├── SKILL.md           # 总入口：铁规矩 + 步骤
 │   └── references/        # 追问清单、卡片模板、评审与评审标准库、各产线、分工、排错
 ├── 索引/                  # 总目录（build_index.py 从各库自动生成）
