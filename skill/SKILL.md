@@ -46,6 +46,8 @@ description: 成片工坊总入口：画风视频、音乐 MV、科普动画、�
 
 ### 1. 追问 → 需求卡
 
+先定**视频类型和时长档**，加载 `references/genres/` 里对应的类型卡（选卡表见 genres/README.md），后面的追问、结构、字数预算、评审标准卡都以这张卡为起点。
+
 按 `references/interview-checklist.md` 一轮一轮问。用 `AskUserQuestion`，每轮 ≤ 4 个问题，选项写成具体画面。每轮后贴需求卡。必填项齐了，让用户确认需求卡。
 
 ### 2. 画风
@@ -88,6 +90,7 @@ description: 成片工坊总入口：画风视频、音乐 MV、科普动画、�
 | | [references/pipeline-explainer.md](references/pipeline-explainer.md) | 用 Remotion 做信息、科普视频 |
 | | [references/pipeline-diorama.md](references/pipeline-diorama.md) | 做 three.js 三维微缩场景 |
 | 3–6 分工 | [references/division-of-labor.md](references/division-of-labor.md) | 用多个 agent 写 Treatment 或做生产时：职责划分、骨架文件、校验脚本 |
+| 类型卡（按类型 / 时长档） | [references/genres/README.md](references/genres/README.md) | 追问时定下类型和时长档后加载对应的卡：时长预算、结构、视觉声音规范、校验逻辑、提示词模板都从卡里取 |
 | 配乐 | [references/music.md](references/music.md) | 选配乐路子（代码作曲卡拍 / 免版税曲库 / 开源模型）、`tools/music/code_score.py` 用法 |
 | 选画风 / 选动效 | `~/video-forge/index/catalog.md`（`index.json` 机读） | 所有画风库、动效卡、解说语法、自己的画风合在一张表；缺库运行 `bash ~/video-forge/bootstrap.sh <id>` |
 | 1 / 6 评审 | [references/review-standards.md](references/review-standards.md) | 追问时按视频类型给默认检查项，和用户一起定评审标准卡 |

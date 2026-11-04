@@ -3,6 +3,7 @@
 
 用法：
   .venv/bin/python code_score.py --bpm 96 --bars 12 --out demo   # 生成 demo.mid / demo.wav / demo.beats.json
+  可选：--sections intro:0,build:4,main:10,outro:14（main 是'释放'点，特效/MV 常放在全长 55–65%）；--fps 60（渲 60fps 时必须传，否则帧号差一倍）
   可选：--sf2 <音色库路径>（默认 ~/.local/share/soundfonts/GeneralUser-GS.sf2）
 
 段落（按小节）：intro（只有钢琴）→ build（加弦乐铺底和贝斯）→ main（加轻鼓点）→ outro（收回钢琴 + 长音）。
@@ -16,6 +17,7 @@ ap.add_argument('--bpm', type=float, default=96)
 ap.add_argument('--bars', type=int, default=12)
 ap.add_argument('--out', default='demo')
 ap.add_argument('--fps', type=int, default=30)
+ap.add_argument('--sections', default='', help="段落起始小节，如 intro:0,build:4,main:10,outro:14（main 即'释放'点；不给则按默认比例）")
 ap.add_argument('--sf2', default=os.path.expanduser('~/.local/share/soundfonts/GeneralUser-GS.sf2'))
 a = ap.parse_args()
 
@@ -26,6 +28,11 @@ PROG = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]]  # Am F C G
 # 段落划分（小节）
 n = a.bars
 sec = {'intro': (0, max(2, n // 6)), 'build': (max(2, n // 6), n // 3), 'main': (n // 3, n - 2), 'outro': (n - 2, n)}
+if a.sections:
+    st = {k: int(v) for k, v in (x.split(':') for x in a.sections.split(','))}
+    order = ['intro', 'build', 'main', 'outro']
+    assert all(k in st for k in order) and [st[k] for k in order] == sorted(st[k] for k in order) and st['outro'] < n, '段落要按 intro<build<main<outro 且都小于总小节数'
+    sec = {k: (st[k], st[order[i + 1]] if i + 1 < 4 else n) for i, k in enumerate(order)}
 in_sec = lambda b, *names: any(sec[x][0] <= b < sec[x][1] for x in names)
 
 def track(ch, program, name):
