@@ -92,12 +92,14 @@ function pinMesh() {
 }
 
 // —— 手型（度）：[张开（正 = 往拇指那边）, 掌指关节弯, 中节弯, 末节弯]；拇指 [指根张开, 指根弯, 第二节弯, 末节弯] ——
+// 推：四指放松、几乎伸直，搭过杖伸到面片上方（不扣、不握、不使劲），指根张开角各不相同（中指最正、小指离得最开）；
+// 拉回（mid）四指略松、多弯一点；歇（rest）四指松下来往回收、末节弯得更多，指缝并拢一些
 const POSE = {
-  push: { thumb: [0, 12, 8, 4], index: [6, 18, 14, 6], middle: [0, 20, 15, 7], ring: [-5, 21, 16, 7], pinky: [-11, 23, 16, 6] },
-  mid: { thumb: [0, 14, 10, 6], index: [5, 26, 22, 10], middle: [0, 28, 24, 12], ring: [-4, 29, 24, 12], pinky: [-9, 31, 22, 10] },
-  rest: { thumb: [0, 16, 12, 8], index: [3, 38, 32, 16], middle: [0, 40, 34, 18], ring: [-2, 40, 34, 18], pinky: [-6, 42, 32, 16] },
+  push: { thumb: [0, 12, 8, 4], index: [8, 10, 9, 4], middle: [1, 11, 10, 5], ring: [-6, 12, 11, 5], pinky: [-14, 14, 12, 5] },
+  mid: { thumb: [0, 14, 10, 6], index: [6, 16, 15, 8], middle: [0, 17, 16, 8], ring: [-5, 18, 17, 8], pinky: [-11, 20, 17, 8] },
+  rest: { thumb: [0, 16, 12, 8], index: [4, 24, 24, 14], middle: [0, 25, 25, 14], ring: [-3, 26, 25, 14], pinky: [-8, 28, 24, 13] },
 };
-const PITCH = { push: 12, mid: 6, rest: 3 };
+const PITCH = { push: 8, mid: 4, rest: 2 };
 
 let S = null;
 function setup() {
@@ -163,7 +165,7 @@ export function draw(g, e, lt, A, t) {
     H.root.rotation.set(pz * Math.PI / 180, sd * 12 * Math.PI / 180, 0, 'YXZ');
     H.aimArm([sd * 0.42, 0.3, 0.86]);
   }
-  const d = 1.05 / zoomAt(lt), el = 50 * Math.PI / 180, tg = [0, 0.02, 0.02];
+  const d = 0.88 / zoomAt(lt), el = 50 * Math.PI / 180, tg = [0, 0.02, 0.02];
   s.cam.position.set(tg[0], tg[1] + d * Math.sin(el), tg[2] + d * Math.cos(el)); s.cam.lookAt(...tg);
   draw3d(g, e, s.scene, s.cam);
   motes(g, lt);

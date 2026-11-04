@@ -64,7 +64,9 @@ export function makeHand(side, light = 'warm') {
   const cyl = (r0, r1, y0, y1, c, o) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, y1 - y0, 40, 1), toon(c, o)); m.position.y = (y0 + y1) / 2; m.castShadow = m.receiveShadow = true; arm.add(m); return m; };
   cyl(.025, .028, -.02, .07, C('skin', light), { t: .1 });
   cyl(.041, .042, .04, .072, C('cuff', light), { t: .05 });
-  cyl(.040, .064, .07, .8, C('sleeve', light), { t: .05 });
+  // 袖身：车削出的渐粗圆筒，半径带几道起伏 → 明暗交界线跟着弯，读得出布褶（靠袖口一段褶更密，布在腕上堆着）
+  const sp = []; for (let i = 0; i <= 48; i++) { const u = i / 48, y = .07 + u * .73; sp.push(new THREE.Vector2(.040 + .024 * Math.min(1, u * 1.6) + (.0035 * Math.sin(u * 23 + 1) + .0025 * Math.sin(u * 70) * (1 - u)) * Math.min(1, u * 6), y)); }
+  const sl = new THREE.Mesh(new THREE.LatheGeometry(sp, 40), toon(C('sleeve', light), { t: .05 })); sl.castShadow = sl.receiveShadow = true; arm.add(sl);
   const wp = new THREE.Vector3();
   function aimArm(dir) {   // dir = 世界坐标里腕 → 肘的方向
     root.updateMatrixWorld(true); B.wrist.getWorldPosition(wp);
