@@ -24,3 +24,17 @@
 - `skill/references/pipeline-explainer.md`：新增「结构模板」（谜题式 / 清单式 / 旅程式）、「差异化」、「写稿」（配音前至少第 2 版）、「配乐和节奏」（BPM 网格、卡拍）。
 - `skill/references/interview-checklist.md`：结构项给科普片三种结构，先推荐谜题式。
 - `skill/references/review-standards.md`：科普类新增 K9 卡拍、K10 不落入同质化视觉、K11 结构有张力。
+
+## 第 2 轮（2026-11-05）：开头钩子与留存
+
+**参考（2 个）**
+- MrBeast 内部制作手册（2024 年泄露，前员工证实）：第 1 分钟流失最多，是全片最重要的一分钟；约每 3 分钟一个 re-engagement 点；封面决定观众的期待。来源：[Tubefilter](https://www.tubefilter.com/2024/09/17/mrbeast-internal-production-guide-leaked-key-points/)、[Passionfruit](https://passionfru.it/mrbeast-leaked-document-81151/)、[OMR](https://omr.com/de/daily/mrbeast-doc-pdf-leak)
+- 抖音知识类中长视频经验（第三方，非官方，只作线索）：1 分钟以上完播率普遍低；被反复回看的片段可能比完播率更有价值。来源：[B 站专栏](https://www.bilibili.com/read/cv45263020)
+
+**对照自己的差距**
+- 《AI 到底该怎么用》开头钩子（10:10）做到了，但第 1 分钟没有"小揭晓"的设计意识，中段没有刻意的再钩点；没有专门设计"值得回看"的画面；交付时没有封面和标题候选；发布后的数据不回流。
+
+**写回 skill 的改动**
+- `skill/references/pipeline-explainer.md`：新增「留存设计」（前 3 秒、第 1 分钟兑现、每 60–90 秒再钩、至少一处值得回看、3 个封面 + 3 个标题）。
+- `skill/references/review-standards.md`：新增 K12 再钩节奏、K13 值得回看。
+- `skill/SKILL.md` 归档步骤：发布约一周后回填平台数据到 `scores.md`，复盘里写哪个留存设计起作用。

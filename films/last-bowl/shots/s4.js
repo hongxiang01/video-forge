@@ -52,7 +52,7 @@ function plate() {
   return c;
 }
 
-// —— 面片：车削出的圆饼（底平、边缘半圆、顶平），外圈 1.3 cm 薄边用 EDGE 色（顶点色 = EDGE / 面团亮色）；杖下压一道浅槽，推的方向前沿略鼓 ——
+// —— 面片：车削出的圆饼（底平、边缘半圆、顶平），外圈 1.3 cm 薄边用 EDGE 色（顶点色 = EDGE / 面团亮色）；杖下压一道浅槽、往两边略鼓，推的方向前沿略鼓 ——
 const ED = rgb(EDGE), DF = rgb(C('dough').f), EK = ED.map((v, i) => v / DF[i]);
 function doughGeo(Rr, h, zp, press, push) {
   const re = h / 2, rb = Rr - 0.013, N = 28, pts = [[1e-4, 0], [Rr - re, 0]], col = [1, 1];
@@ -65,7 +65,8 @@ function doughGeo(Rr, h, zp, press, push) {
     const j = i % n, k = col[j] ? EK : [1, 1, 1]; cs.set(k, i * 3);
     let x = P.getX(i), y = P.getY(i), z = P.getZ(i);
     const bul = 1 + push * 0.025 * Math.max(0, -z / Rr) ** 2;                                    // 推的时候远侧前沿略鼓
-    x *= bul; z *= bul;
+    x *= bul * (1 + (0.012 + 0.022 * push) * Math.exp(-(((z - zp) / 0.035) ** 2)));          // 杖下的面片被压得往两边略鼓（轮廓上看得出）
+    z *= bul;
     if (y > h * .7) y += -press * Math.exp(-(((z - zp) / 0.024) ** 2)) + 0.45 * press * Math.exp(-(((z - zp + 0.034) / 0.014) ** 2));   // 杖下的浅槽 + 杖前推起的一道棱
     P.setXYZ(i, x, y, z);
   }
