@@ -21,11 +21,13 @@ description: 成片工坊总入口：画风视频、音乐 MV、科普动画、�
 4. **关卡顺序不能跳**：需求卡 + 评审标准卡 → 画风（样片）→ 风格卡/风格帧 → 设定卡 → 分镜联系表 → 草稿 → 评委循环 → 归档。产线可以声明跳过某关（如微缩没有分镜），但要写明。
 5. **分镜默认要确认**（lemo 默认不确认，这里改成默认确认）。
 6. **评委是独立子 agent**，只给作品和用户确认的评审标准卡，不给我的结论。评委要看全片（每 2 秒抽 1 帧），只能测量声音、不评价好不好听。用户的话优先于评委。
-7. **人物不演戏**：代码画的表情、手部动作必僵。除非产线有角色绑定能力，人物只做小、远、静止或简单循环。
+7. **人物不演戏**：代码画的表情、手部动作必僵。除非产线有角色绑定能力，人物只做小、远、静止或简单循环。**手要拿东西、东西压着东西的镜头，开工就用三渲二**（三维骨骼手 + 三维道具 + 卡通渲染，`references/pipeline-style-film.md`「做法先于画风」），不用平面拼手：《最后一碗面》平面画的手改了三版还像机器，擀面杖擀到了桌上。
 8. **用户原话进卡片**：用户说过的具体要求（比如「灯光不要拍扁」）原文写进需求卡的禁区或硬要求。
 9. **大任务按职责分给多个 agent**（`references/division-of-labor.md`）：先定骨架文件，各职责只引用编号，算术用脚本校验；不靠降低思考强度来避免超时。
 10. **作品归档到 `~/video-forge`**，不放临时目录；临时目录重启会丢。
 11. 网络：这台机器的代理极慢，大下载用 `curl --noproxy '*'`、`env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY` 绕开；shell 里 `grep` 坏了时用 `/usr/bin/grep`。
+12. **量出来才算数**：接触（穿模）、遮挡、对齐、响度交付前用脚本量，交付说明里写测量值；改前改后对比必须是同一张画；我和 agent 报的数字没量过不说（`references/review.md`「自检怎么复核」）。《最后一碗面》自检说只剩三个小毛病，实际 36 张画拇指全插在擀面杖里。
+13. **背景音乐从曲库来**：免费曲库或发布平台曲库，不用 AI、代码生成（用户 2026-11-05 定，`references/music.md`）。
 
 ## 步骤
 
@@ -76,6 +78,8 @@ description: 成片工坊总入口：画风视频、音乐 MV、科普动画、�
 
 在 `~/video-forge/works/<slug>/` 放：源码或项目链接、成片/截图、需求卡、风格卡、分镜、`scores.md`；在 `~/video-forge/retros/` 写复盘；路子可复用就从 `recipes/_template.md` 写一份新方案，并在 `~/video-forge/README.md` 的「🎞 作品」表加一行；用到新的外部库就登记进 `deps.json` 并重建 `index/`。
 
+发抖音按 `references/publish-douyin.md`：用户确认成片后由我上传，填标题、简介、话题、章节、封面、AI 声明，用户定时间。
+
 发布后约一周，请用户从平台后台（如抖音创作者服务中心）看一眼完播率、平均观看时长、在哪几秒流失最多、哪段被回看，回填到这个作品的 `scores.md`「发布数据」一节，并在复盘里写一句：哪个留存设计起了作用、哪里流失了。下次写稿和分镜参考这些真实数据，而不是只凭评委意见。
 
 ## 参考文件
@@ -91,7 +95,8 @@ description: 成片工坊总入口：画风视频、音乐 MV、科普动画、�
 | | [references/pipeline-diorama.md](references/pipeline-diorama.md) | 做 three.js 三维微缩场景 |
 | 3–6 分工 | [references/division-of-labor.md](references/division-of-labor.md) | 用多个 agent 写 Treatment 或做生产时：职责划分、骨架文件、校验脚本 |
 | 类型卡（按类型 / 时长档） | [references/genres/README.md](references/genres/README.md) | 追问时定下类型和时长档后加载对应的卡：时长预算、结构、视觉声音规范、校验逻辑、提示词模板都从卡里取 |
-| 配乐 | [references/music.md](references/music.md) | 选配乐路子（代码作曲卡拍 / 免版税曲库 / 开源模型）、`tools/music/code_score.py` 用法 |
+| 配乐 | [references/music.md](references/music.md) | 选配乐：默认免费曲库或平台曲库（不用 AI 生成）；代码作曲、开源模型只在用户点名时用 |
+| 发布 | [references/publish-douyin.md](references/publish-douyin.md) | 发抖音：上传、话题、章节、封面、定时，和踩过的坑 |
 | 选画风 / 选动效 | `~/video-forge/index/catalog.md`（`index.json` 机读） | 所有画风库、动效卡、解说语法、自己的画风合在一张表；缺库运行 `bash ~/video-forge/bootstrap.sh <id>` |
 | 1 / 6 评审 | [references/review-standards.md](references/review-standards.md) | 追问时按视频类型给默认检查项，和用户一起定评审标准卡 |
 | 6 评审 | [references/review.md](references/review.md) | 开评委、逐条判定、决定停不停 |

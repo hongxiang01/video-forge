@@ -18,6 +18,7 @@
 | 特效 / 视觉奇观 | 15–60 秒 | [vfx-showcase.md](vfx-showcase.md) |
 | 广告 / 产品 | 6 秒 / 15 秒 / 30–60 秒 / 1–2 分钟发布会片 | [product-ad.md](product-ad.md) |
 | 三维微缩 / 交互 | 网页交付 / 导出 20–45 秒环绕视频 | [diorama-interactive.md](diorama-interactive.md) |
+| 幕后 / 前后对比（讲一条片子怎么改出来，再放成片） | 讲解 1.5–2.5 分钟 + 成片 | [making-of.md](making-of.md) |
 
 不在表里的类型：按 `review-standards.md` 末尾「新类型」的做法和用户一起定核心问题，做完后照这些卡的 9 个小节补一张新卡。
 
@@ -42,4 +43,4 @@
 
 ## 编号
 
-各卡新增的检查项编号：科普短 KS*、中 KM*、长 KL*、口播 KT*，叙事 D10–D21，氛围 A10–A19，MV M10–M17，特效 F10–F19，广告 P11–P18，微缩 S11–S20。引用 `review-standards.md` 里已有的编号（G*、K1–K13、D1–D7 等）时用原编号。以后新增编号前先在这里查重。
+各卡新增的检查项编号：科普短 KS*、中 KM*、长 KL*、口播 KT*，叙事 D10–D21，氛围 A10–A19，MV M10–M17，特效 F10–F19，广告 P11–P18，微缩 S11–S20，幕后 B11–B17。引用 `review-standards.md` 里已有的编号（G*、K1–K13、D1–D7 等）时用原编号。以后新增编号前先在这里查重。

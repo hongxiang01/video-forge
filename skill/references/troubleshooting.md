@@ -13,3 +13,6 @@
 | 画面整体发灰、太亮、没体积 | 环境光太强 | 压环境光，用聚光做光池，调色压高光 |
 | 子 agent 每隔整 10 分钟发一次请求、一直没有回复 | 单次请求超过 10 分钟被掐断后重试：一次回复要输出整篇长文，或动笔前构思太久（一次实测 5 万多 token、9 分 16 秒） | 看门狗 `scripts/watch_agents.py` 会自动报出来。停掉，按 `division-of-labor.md` 拆成骨架 → 分节 → 场记；正文分节写进文件，只交回路径。不要靠降低思考强度。兜底：`API_TIMEOUT_MS` 已设为 30 分钟 |
 | 文件在临时目录里丢了 | scratchpad 重启会清 | 一开始就把生产目录建在 `~/video-forge/films/` 或项目仓库里 |
+| Remotion 渲染卡在 `Downloading Chrome Headless Shell`（十几分钟不动） | 新项目第一次渲染要从谷歌下载 93 MB 浏览器，走代理或直连都很慢 | 加 `--browser-executable=~/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell --gl=angle --concurrency=8`（Remotion 4.0.507 实测，1080p 2956 帧约 2 分钟） |
+| 改前改后对比图差了一张画 | lemo 的 `still.mjs` 会把 t 按 12 fps 向下取整 | 用 t = k/12 + 0.01 出图，或直接从两版成片按同一时间码抽帧 |
+| 三渲二的胳膊每换一张就闪暗一次 | 胳膊转向后整条翻到卡通明暗的暗面 | 少挪一点，改完连着几张看明暗（`pipeline-style-film.md`「做法先于画风」） |
