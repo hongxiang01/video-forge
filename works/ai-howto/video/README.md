@@ -1,6 +1,6 @@
 # 《AI 到底该怎么用》源码
 
-纸本风格科普短片（3:46，1920×1080，30fps）。画面全部用 Remotion 代码绘制，配音是 edge-tts 云健 +20%，配乐用 `scripts/make_music.py` 合成。
+纸本风格科普短片（3:46，1920×1080，30fps）。画面全部用 Remotion 代码绘制，配音是 edge-tts 云健 +20%，配乐 v3 用 `tools/music/code_score.py` 代码作曲（钢琴→弦乐贝斯→轻鼓→收尾，段落对齐章节），由 `scripts/make_music.py` 生成；成片 `final_v3.mp4`。
 
 本目录只收我们自己写的部分：
 
@@ -32,6 +32,6 @@ cp -R script scripts /tmp/ai-howto/
 #   <Composition id="FilmSilent" component={Film} defaultProps={{audio: false}} durationInFrames={TOTAL_FRAMES} fps={30} width={1920} height={1080} />
 # 配音（会重新生成 timeline/subs 与 audio.wav）：
 VOICE=zh-CN-YunjianNeural RATE=+20% LEAD=-37 python3 scripts/tts_build.py
-python3 scripts/make_music.py
+.venv/bin/python scripts/make_music.py   # 需 ~/video-forge/tools/music/.venv 与 fluidsynth
 npx remotion render src/index.ts Film out.mp4
 ```
