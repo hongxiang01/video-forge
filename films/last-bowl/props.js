@@ -773,12 +773,15 @@ export function doughBacklit(g, e, o = {}) {
   // —— 杖：横贯最上方，直径 2r（84 px），两头圆头露在拳头外；逆光暗木 + 下半背光一档 + 一道硬边木头高光 + 上沿 3 px 暖金轮廓光 ——
   const x0 = cx - a - S.over * k, x1 = cx + a + S.over * k, pc = C('pin', 'warm'), pf = mix(pc.s, SIL.s5.line, .3);
   const pinP = new Path2D(); pinP.roundRect(x0, T - r, x1 - x0, 2 * r, r);
+  if (o.pin) o.pin(g, e);   // 三渲二（S5）：o.pin(g, e) = 调用方画三维杖（面片之后、卷边之前），这里的 2D 杖不画；发光层照常按 pinP 印黑
+  else {
   cel(g, pinP, { f: pf, rim: { c: SIL.s5.rim, d: [0, 3] }, l: SIL.s5.line, lw: 2 });
   g.save(); g.clip(pinP);
   g.fillStyle = mix(pf, SIL.s5.line, .35); g.fillRect(x0, T + r * .38, x1 - x0, r);
   g.fillStyle = mix(pf, pc.f, .5); g.fill(sharpPoly([[x0 + r * .55, T - r * .62], [x1 - r * .55, T - r * .62], [x1 - r * .85, T - r * .36], [x0 + r * .85, T - r * .36]]));
   g.restore();
   g.strokeStyle = SIL.s5.line; g.lineWidth = 2; g.stroke(pinP);
+  }
   // 面皮翻过杖顶的卷边：从杖后面翻上来、搭在杖顶前面一窄条（两层，厚边压一档），上沿一线逆光透亮的薄边
   const cu = [], cl = [];
   for (let i = 0; i <= 28; i++) {

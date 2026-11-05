@@ -1,12 +1,17 @@
-// S3（6.0–9.0 s）近景 · 台面高度微仰 · 固定：逆光半剪影揉面。6.00 / 6.75 / 7.50 / 8.25 每拍一推：推出 → 折回 → 转（TREATMENT §4 / §5，CONTINUITY S2→S3、S3→S4）
-// 粗剪第 2 轮：背景换成 A 里那扇窗（三格、两道窗棂、玻璃上反写「手擀面」、窗顶卷帘门卷筒、右格路灯金光、窗台外一道雪埂），从台面高度看过去；
-// 台面灯圈偏左（吊灯在左上）。手型自己摆（backHand：手背朝镜头、往窗那边伸），不再借现成手型压扁。
-// 半剪影：左手 → 面团 → 右手先按暖灯色画进离屏，再整块乘成暖灯阴影，只在顶面留一窄条 lit；朝上 / 朝两侧的边勾 2–4 px 雪光蓝 #9CC8FF。
+// S3（6.0–9.0 s）近景 · 低机位斜俯（台面上 30 cm、往下 9.8°）· 固定：逆光半剪影揉面，三渲二（2D 版原样备份在 s3_2d.js）。6.00 / 6.75 / 7.50 / 8.25 每拍一推：
+// 掌根推出（面团被压长）→ 四指勾住远边往回折 → 左手扣住转 90°（TREATMENT §4 / §5，CONTINUITY S2→S3、S3→S4）。
+// 背景照旧是 2D 的窗（A 里那扇：三格、反写「手擀面」、窗顶卷帘门卷筒、右格路灯金光），台面换成三维木板（远沿对齐 2D 墙脚 HOR），
+// 面团、手、前臂和袖子是三维：卡通材质两阶硬边 + 彩色描边；一盏白色方向光从左上、略偏窗那边照（吊灯），硬边投影，不加环境光
+// → 朝镜头的一面自然落进暗阶，只有顶面和左肩受光；窗外冷光 = 按前景剪影在朝上 / 两侧的边内勾 2–4 px 雪光蓝。
+// 世界坐标（米）：X 向右，Y 向上，Z 朝镜头（师傅这一侧）；面团中心在原点，台面 y = 0。手和面团按 12 fps 换张。
 // 第四拍收在「转」上（面团转过来、双手还按在面上），9.00 切 S4 正俯推杖。
-import { cel, rgba, mix, rng, hash, airbrush, vgrad, canvas, TAU, W, H } from '../lib/cel.js';
+import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { cel, rgba, mix, rng, hash, airbrush, vgrad, canvas, line, TAU, W, H } from '../lib/cel.js';
 import { C, SNOWLIGHT_RIM, BG, SNOW, LIGHT } from '../pal.js';
-import { digit, part, backOfHand, FW, FWK } from '../hands.js';
 import { FONT } from '../plates.js';
+import { toon, sun, draw3d, renderer } from '../lib3d.js';
+import { makeHand } from '../hand3d.js';
 
 const f12 = t => Math.floor(t * 12 + 1e-6) / 12;
 const DOUGH = C('dough'), FLOUR = C('flour');
@@ -17,7 +22,6 @@ const WIN = { x0: WX(-.8), x1: WX(.8), y0: WY(1.85), y1: WY(1.10), mull: [-.27, 
 const ROLL = 36;                                             // 卷帘门卷在窗上沿（A 里 14 px；这里离得近、往上看）
 const LAMP = [WX(.64), WIN.y0 + ROLL + 34];                  // 路灯：在右格右上、紧挨卷筒下面的一团金光
 const LETTERS = [['面', WX(-.535)], ['擀', WX(0)], ['手', WX(.535)]], LET = { top: WY(1.42), s: .22 * 760 };
-const SHADE_MUL = '#9C8096';                                 // 暖灯 lit → shadow 的乘数（皮肤 #D9A07A → #9C6250）
 
 const panes = () => { const p = new Path2D(), xs = [WIN.x0, ...WIN.mull.flat(), WIN.x1]; for (let i = 0; i < xs.length; i += 2) p.rect(xs[i], WIN.y0, xs[i + 1] - xs[i], WIN.y1 - WIN.y0); return p; };
 const band = (g, y0, y1, col) => { g.fillStyle = col; g.fillRect(WIN.x0 - 4, WIN.y0 + y0, WIN.x1 - WIN.x0 + 8, y1 - y0); };
@@ -98,127 +102,187 @@ function plate() {
   PL = { c, e: ce, f: cf, fe: cfe, P }; return PL;
 }
 
-// —— 面团侧影：底边平贴台面，顶上一条鼓起的弧。S = { xl, xr, h, sk 峰位, fold 折回的唇 } ——
-function doughPts(S, seed) {
-  const pts = [[S.xl, YB, 1]];
-  for (let i = 1; i < 18; i++) { const u = i / 18, w = Math.pow(Math.sin(Math.PI * Math.pow(u, S.sk)), .4); pts.push([S.xl + (S.xr - S.xl) * u, YB - S.h * w + (hash(i + seed) - .5) * 12]); }
-  pts.push([S.xr, YB, 1]);
-  return pts;
-}
+// —— 三维 ——
+const D2R = Math.PI / 180, DR = 0.11, DH = 0.08, ZN = 0.40;            // 面团半径、高；台面近沿 z
+// 机位：台面上 30 cm、往下 9.8°（低机位斜俯，看得到面团顶面和手背；高过前臂 → 前臂从下角出画、不横挡窗）；台面远沿（墙脚）正好落在 2D 的 HOR，面团离墙约 30 cm
+const CAM = { p: [0.07, 0.30, 0.95], fov: 23, pitch: 9.8 };
+const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-// —— 手型：手背朝镜头、往窗那边伸（本地：掌宽 = 1，y 向下，前臂从 +y 来）。左手用同一套、side 'L' 镜像 ——
-// 四指（小 → 食）[根节角°, 二节再弯°, 三节再弯°, 三节可见比例]：手背贴着看，指头搭在面团上越往前越缩短
-// 粗剪第 3 轮（第 2 版像两只竖起来的耙子 / 爪子）：四指每个关节都弯一点（5–20°）、往中指一侧收，张开的角度和间隔各不相同，
-// 指根骨节一道弧、间距不等；拇指根落在掌的桡侧边上（掌外形鼓出第一掌骨，虎口软弧接到食指根），斜着伸、和食指之间留开 V；
-// wa = 前臂方向（本地°）：比 90 小 = 腕往小指一侧折（尺偏），前臂斜着从下角进来；前臂在画框下沿附近再折一点（elbow），不是一根直管
-const DG = Math.PI / 180, FN = ['l', 'r', 'm', 'i'], FL = { l: .50, r: .63, m: .68, i: .62 }, PH = [.45, .30, .25];
-const MCP = [[.34, -.37], [.14, -.47], [-.09, -.51], [-.33, -.45]];
-const PALM = [[-.46, -.43], [-.28, -.51], [-.08, -.55], [.13, -.52], [.33, -.45], [.48, -.33], [.53, -.04], [.48, .28], [.37, .54, 1], [-.31, .56, 1], [-.46, .34], [-.60, .14], [-.66, -.02], [-.62, -.16], [-.55, -.30]];
-const WEB = [[-.66, -.20], [-.65, -.02], [-.58, -.04], [-.58, -.14], [-.56, -.22]];
-function backHand(q) {   // q = { fy 掌的纵向透视, wa 前臂方向°, f: 四指, th: [x, y, 角1, 角2, 长1, 长2] 拇指, seed }
-  const Y = p => p.length > 2 ? [p[0], p[1] * q.fy, p[2]] : [p[0], p[1] * q.fy];
-  const palm = part('skin', ['W', ...PALM.map(Y)], { cal: [WEB.map(Y)] }), mcp = MCP.map(Y);
-  backOfHand(palm, mcp, [.02, .50 * q.fy], q.seed);
-  const fing = [];
-  FN.forEach((f, i) => {
-    const [a, b1, b2, ...k] = q.f[i], angs = [a, a + b1, a + b2], ls = PH.map((p, j) => FL[f] * p * k[j]), n = ls.filter(l => l > .012).length;
-    fing.push(...digit(mcp[i], angs.slice(0, n), ls.slice(0, n), { w: FW * FWK[f], back: true, nail: n === 3, id: i + q.seed * 4, cal: f === 'i' ? -1 : 0 }));
-  });
-  const [tx, ty, t1, t2, l1, l2] = q.th, thumb = digit([tx, ty * q.fy], [t1, t2], [l1, l2], { w: .28, nail: true, back: true, id: 9 + q.seed });
-  return { arm: { w: [.03, .53 * q.fy], a: q.wa }, parts: [...thumb, palm, ...fing] };
-}
-const mixQ = (a, b, w) => Array.isArray(a) ? a.map((v, i) => mixQ(v, b[i], w)) : typeof a === 'number' ? a + (b - a) * w : a;
-// 手背看过去，手指往掌心蜷 = 往画面里扎 → 主要表现为可见长度变短；侧向再弯 5–20°（往中指一侧收），四根各不相同。
-// 台面高度看过去，平按在面顶上的手掌和顺着面顶往前搭的手指都是贴着视线的 → 掌（fy）和指（可见比例）都压得很短，读得出「压在上面」
-// 搭在面顶上的手指顺着面顶弯过去、往远处走：末节翻到面顶后面看不见（可见比例 < .07 → 只画两节、不出指甲），指头停在面团的顶线附近，
-// 不再竖着露出三节带指甲的指头（第 2 版读成举在面团前面的爪子）
-// push 掌根推出去：四指扇开搭在面顶、小指张得最开最弯；fold 腕抬起，近节搭过面顶、只露到 PIP 骨节，四指往一处收拢；
-// turn 右手松开抬一点，指头放平（三节露出来）；hold 左手扶住左侧面，扇开不等；grip 左手转面团：四指往面里扣（更缩短、更弯）
-// 拇指根在掌的桡侧边上（[-.58, .08–.10]），贴着面团近侧斜着往前、和食指之间留 V；够长（.27 + .20）但不往另一只手那边横伸（两只拇指不在中间碰头）
-const Q = {
-  push:  { fy: .50, wa: 70, seed: 3, f: [[-67, -12, -26, .46, .30, .05], [-82, -7, -14, .52, .34, .06], [-94, 3, 8, .54, .36, .06], [-106, 9, 18, .50, .32, .05]], th: [-.58, .08, -118, -100, .27, .20] },
-  fold:  { fy: .78, wa: 72, seed: 3, f: [[-71, -16, 0, .50, .16, 0], [-84, -9, 0, .56, .17, 0], [-95, 4, 0, .58, .18, 0], [-106, 12, 0, .54, .17, 0]], th: [-.58, .08, -114, -96, .27, .20] },
-  turn:  { fy: .60, wa: 68, seed: 3, f: [[-68, -8, -17, .60, .44, .30], [-82, -4, -9, .66, .48, .34], [-93, 2, 6, .68, .50, .36], [-105, 6, 13, .64, .46, .32]], th: [-.58, .10, -102, -88, .27, .20] },
-  hold:  { fy: .56, wa: 70, seed: 4, f: [[-64, -11, -24, .46, .30, .05], [-80, -6, -13, .52, .34, .06], [-93, 3, 8, .56, .36, .06], [-105, 9, 19, .50, .32, .05]], th: [-.58, .10, -110, -94, .25, .18] },
-  grip:  { fy: .70, wa: 72, seed: 4, f: [[-72, -16, -34, .46, .22, .05], [-85, -10, -21, .52, .24, .05], [-95, 4, 9, .54, .26, .05], [-106, 11, 23, .52, .25, .05]], th: [-.58, .10, -104, -90, .24, .17] },
-};
-Q.ready = mixQ(Q.turn, Q.push, .5);
-// 关键形：K1 推出（面团压扁、往前摊开，右手掌根在面上）；K2 折回（右手勾着远边拉回来，面团鼓起、顶上一道折唇）；K3 转（左手扣着拧，峰位换边）；K0 预备（右手抬起）
-// R / L：[x, y, rot, 手型]，锚点 = 掌心；前臂从下角出画（师傅在近侧）。两只手分在面团两侧，中间露出面团的近面
-// （第一版两只 300 px 的手并排压在 650 px 的面团上，面团整个被挡住）：掌宽 HS，右手掌根压在面团右上、指尖搭到面顶，左手扶左侧面
-// 推 = 往窗那边（画面上方）：K0 预备时右手收回、在低处，K1 拍点上一下推上去；K2 勾住远边往回带（手往下回来一点）；K3 右手松开外撤、左手拧
-const HS = 262;
-const K = {
-  // 第 3 轮：手本身转得少一点（rot），斜的部分交给腕角（wa）和前臂 → 手指朝窗、前臂从下角斜着进来；两手各往外让 20 px，两个拇指不在中间碰头
-  K1: { d: { xl: 545, xr: 1375, h: 345, sk: .75, fold: 0 }, R: [1088, 540, -.20, 'push'], L: [680, 616, .38, 'hold'] },
-  K2: { d: { xl: 590, xr: 1310, h: 405, sk: 1.0, fold: 1 }, R: [1066, 518, -.10, 'fold'], L: [676, 604, .36, 'hold'] },
-  K3: { d: { xl: 575, xr: 1325, h: 412, sk: 1.25, fold: .4 }, R: [1170, 580, -.44, 'turn'], L: [704, 578, .22, 'grip'] },
-  K0: { d: { xl: 580, xr: 1320, h: 400, sk: 1.0, fold: .2 }, R: [1138, 616, -.32, 'ready'], L: [686, 610, .36, 'hold'] },
-};
-const SEQ = [['K1', 'K1', 0], ['K1', 'K1', 0], ['K1', 'K2', .5], ['K2', 'K2', 0], ['K2', 'K2', 0], ['K2', 'K3', .5], ['K3', 'K3', 0], ['K3', 'K3', 0], ['K0', 'K1', .25]];   // 每拍最后一张：收回到低处、推已经起步（中间张），下一拍落在 K1
-const LAST = [...SEQ.slice(0, 6), ['K2', 'K3', .8], ['K3', 'K3', 0], ['K3', 'K3', 0]];   // 第四拍收在「转」上
-const lerp = (a, b, w) => a + (b - a) * w;
-function keyAt(lt) {
-  const n = Math.max(0, Math.floor(f12(lt) * 12 + 1e-6)), beat = Math.min(3, Math.floor(n / 9)), i = Math.min(8, n - beat * 9);
-  const [a, b, w] = (beat === 3 ? LAST : SEQ)[i], A = K[a], B = K[b], jit = (hash(beat + 7) - .5) * 24;
-  const d = {}; for (const k in A.d) d[k] = lerp(A.d[k], B.d[k], w);
-  d.xl += jit; d.xr += jit;
-  const hnd = s => [lerp(A[s][0], B[s][0], w) + jit, lerp(A[s][1], B[s][1], w), lerp(A[s][2], B[s][2], w), mixQ(Q[A[s][3]], Q[B[s][3]], w)];
-  return { d, R: hnd('R'), L: hnd('L'), i, beat };
-}
-
-let HC = null, DC = null, T1 = null, T2 = null;
-const fresh = x => { x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1; x.clearRect(0, 0, W, H); };
-function handIn(x, hd, [hx, hy, rot, q], side) {
-  hd(x, null, { x: hx, y: hy, s: HS, rot, pose: () => backHand(q), side, light: 'warm', arm: 3.6, lw: 2, elbow: { at: 1.25, a: q.wa - 16, len: 3 } });   // 前臂在画框下沿附近往外再折 16°
-}
-function doughIn(x, S, seed) {
-  const P = doughPts(S, seed), cx = (S.xl + S.xr) / 2, top = YB - S.h;
-  const sh = [], hi = [[[cx - S.h * .9, top + 26], [cx + S.h * .4, top + 8], [cx + S.h * .6, top + 30], [cx - S.h * .6, top + 52]]];
-  if (S.fold > .05) {   // 折回来的唇：一道硬边折痕影 + 唇上一条亮
-    const fx = lerp(S.xr - 60, cx + 40, S.fold), fy = top + 40 + 60 * S.fold;
-    sh.push([[fx - 170, fy + 18], [fx + 10, fy - 14], [fx + 160, fy + 4], [fx + 150, fy + 26], [fx, fy + 10], [fx - 160, fy + 36]]);
+// 台面板：横铺木板（同 S4 / plates 的暖灯台面画法），灯圈偏左（吊灯在左上），远沿一线窗光，面团周围散粉
+const KP = 1200, X0 = -1.2, XW = 2.4;
+function boardTex(zW) {
+  const DZ = ZN - zW, [c, x] = canvas(Math.round(XW * KP), Math.round(DZ * KP)), w = c.width, h = c.height, B = BG.warm, R = rng(303);
+  const toP = (X, Z) => [(X - X0) * KP, (Z - zW) * KP];
+  x.fillStyle = B.wood; x.fillRect(0, 0, w, h);
+  const pw = 0.135 * KP;
+  for (let i = 0, y0 = -0.03 * KP; y0 < h; i++, y0 += pw) {
+    x.fillStyle = mix(B.wood, i % 2 ? '#6A3C20' : '#8A5634', .45); x.fillRect(0, y0, w, pw);
+    const gc = mix(B.wood, B.grain, .55);
+    for (let j = 0; j < 9; j++) { const yy = y0 + pw * (.08 + .84 * R()), pts = []; for (let xx = -40; xx < w + 80; xx += 160) pts.push([xx, yy + Math.sin(xx / (300 + 200 * R()) + j) * (4 + 6 * R())]); line(x, pts, gc, 1.4 + R() * 1.6); }
+    x.fillStyle = B.grain; x.fillRect(0, y0 - 3, w, 6); x.fillStyle = mix(B.wood, '#C08A55', .45); x.fillRect(0, y0 + 3, w, 3);
   }
-  cel(x, P, { f: DOUGH.f, s: DOUGH.s, so: [0, -26], sh, h: FLOUR.f, hi, l: DOUGH.l, lw: 2 });
+  const [hx, hy] = toP(-0.28, -0.05);
+  airbrush(x, hx, hy, 0.75 * KP, 0.42 * KP, B.woodHalo, .8, .95);
+  const gr = x.createRadialGradient(hx, hy, 0.25 * KP, hx, hy, 1.0 * KP); gr.addColorStop(0, rgba(B.woodDark, 0)); gr.addColorStop(1, rgba(B.woodDark, .85)); x.fillStyle = gr; x.fillRect(0, 0, w, h);
+  x.fillStyle = rgba(BG.night.snowGrey, .55); x.fillRect(0, 0, w, 0.004 * KP);                       // 远沿一线窗光
+  const fl = C('flour').f;
+  for (let i = 0; i < 520; i++) { const a = R() * TAU, d = 0.13 + Math.pow(R(), 2) * 0.32, [px, py] = toP(Math.cos(a) * d * 1.3, Math.sin(a) * d * .8); x.fillStyle = rgba(fl, .5 + .5 * R()); x.beginPath(); x.arc(px, py, 1.2 + 2.6 * R(), 0, TAU); x.fill(); }
+  const t = new THREE.CanvasTexture(c); t.anisotropy = renderer().r.capabilities.getMaxAnisotropy(); return t;
 }
-// 整块乘成暖灯阴影，顶上留 (lx, ly) 的 lit；朝上 / 两侧的边勾雪光蓝。手：顶上 16 px；面团单独一遍：吊灯在左上 → 顶上和左边留一大块 lit，
-// 面团还是 S2 那团面的奶白色（第一版整团压成灰紫，和 S2 接不上）
-function backlit(CV, lx, ly) {
-  const [hc, hg] = CV, [c1, x1] = T1, [c2, x2] = T2;
-  fresh(x1); x1.drawImage(hc, lx, ly); x1.globalCompositeOperation = 'source-in'; x1.fillStyle = SHADE_MUL; x1.fillRect(0, 0, W, H);
-  x1.globalCompositeOperation = 'destination-in'; x1.drawImage(hc, 0, 0);
-  hg.save(); hg.setTransform(1, 0, 0, 1, 0, 0); hg.globalCompositeOperation = 'multiply'; hg.drawImage(c1, 0, 0); hg.restore();
-  fresh(x2); x2.drawImage(hc, -2.5, 3.5); x2.globalCompositeOperation = 'destination-in'; x2.drawImage(hc, 2.5, 3.5);
-  fresh(x1); x1.drawImage(hc, 0, 0); x1.globalCompositeOperation = 'source-in'; x1.fillStyle = SNOWLIGHT_RIM; x1.fillRect(0, 0, W, H);
-  x1.globalCompositeOperation = 'destination-out'; x1.drawImage(c2, 0, 0);
-  hg.save(); hg.setTransform(1, 0, 0, 1, 0, 0); hg.globalCompositeOperation = 'source-atop'; hg.drawImage(c1, 0, 0); hg.restore();
+
+// 面团：单位球（合并缝上的顶点，法线不断）→ 底平的馒头形 → 推长（远半边拉长、变薄）→ 掌根压窝 → 远边绕折痕翻回来盖在顶上 → 整体转
+const SPH = (() => { const g = new THREE.SphereGeometry(1, 96, 64); g.deleteAttribute('uv'); g.deleteAttribute('normal'); return mergeVertices(g); })();
+function xf(ux, uy, uz, st, o) {
+  const { s = 0, ph = 0, pr = 0, hx = 0, hz = 0, yaw = 0, seam = 0 } = st, zh = 0.02, k = 1 + 0.65 * s, zt = zh + (-DR - zh) * k, zf = zh + (zt - zh) * .62, yf = DH * .62;   // 折痕靠远端：翻回来的唇短一点
+  let x = DR * ux * (1 + .14 * s), y = DH * Math.max(0, (uy + .22) / 1.22) * (1 - .12 * s), z = DR * uz;   // 推的时候往两边摊、变矮（正面也看得出被压）
+  if (seam) y -= .006 * Math.exp(-(((x - .04) / .008) ** 2)) * (y / DH) ** 2;                      // 上一折留下的接缝（转过 90° 后顺着推的方向）
+  if (z < zh) { const t = Math.min(1, (zh - z) / (DR + zh)); z = zh + (z - zh) * k; y *= 1 - .32 * s * t; }
+  if (pr) y -= pr * Math.exp(-((x - hx) ** 2 + (z - hz) ** 2) / .042 ** 2) * (y / DH);
+  if (ph) { const a = ph * sm(zf + .03, zf - .05, z), ca = Math.cos(a), sa = Math.sin(a), dz = z - zf, dy = y - yf; z = zf + dz * ca + dy * sa; y = yf - dz * sa + dy * ca; }
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
+  o[0] = x * cy + z * sy; o[1] = y; o[2] = -x * sy + z * cy; return o;
 }
-function thud(g, S, k) {   // 每拍「咚」：面团底两侧各一小团粉，2 张
-  const al = k ? .55 : 1, sz = k ? 30 : 22, col = mix(FLOUR.f, SNOWLIGHT_RIM, .25);
+// 转的两张：折好的形往一团圆面团上靠（kb），一边转一边揉圆 → 和下一拍「咚」的那团面接得上
+function doughGeo(st, geo) {
+  const P = SPH.attributes.position, a = geo.attributes.position.array, o = [0, 0, 0], m = [0, 0, 0], kb = st.kb || 0, F = { ...st, yaw: 0 }, cy = Math.cos(st.yaw || 0), sy = Math.sin(st.yaw || 0);
+  for (let i = 0; i < P.count; i++) {
+    xf(P.getX(i), P.getY(i), P.getZ(i), F, o);
+    if (kb) { xf(P.getX(i), P.getY(i), P.getZ(i), {}, m); for (let j = 0; j < 3; j++) o[j] += (m[j] - o[j]) * kb; }
+    a[i * 3] = o[0] * cy + o[2] * sy; a[i * 3 + 1] = o[1]; a[i * 3 + 2] = -o[0] * sy + o[2] * cy;
+  }
+  geo.attributes.position.needsUpdate = true; geo.computeVertexNormals(); geo.computeBoundingSphere();
+}
+function topAt(geo, x, z, r = .014) { const a = geo.attributes.position.array; let m = 0; for (let i = 0; i < a.length; i += 3) if (Math.abs(a[i] - x) < r && Math.abs(a[i + 2] - z) < r && a[i + 1] > m) m = a[i + 1]; return m; }
+
+// 手型（度）：四指 [张开, 掌指弯, 中节弯, 末节弯]，拇指 [指根张开, 指根弯, 第二节, 末节]
+const POSE = {
+  push:  { thumb: [10, 14, 10, 5], index: [7, 12, 14, 6], middle: [1, 13, 15, 7], ring: [-5, 15, 16, 7], pinky: [-12, 17, 16, 7] },   // 掌根压，四指松搭
+  reach: { thumb: [8, 16, 12, 6], index: [5, 30, 40, 20], middle: [0, 32, 42, 22], ring: [-4, 34, 44, 22], pinky: [-9, 36, 44, 22] },
+  hook:  { thumb: [4, 22, 18, 8], index: [4, 44, 70, 40], middle: [0, 46, 72, 42], ring: [-3, 48, 72, 42], pinky: [-7, 50, 70, 40] },  // 勾住远边
+  press: { thumb: [8, 16, 10, 5], index: [6, 20, 26, 12], middle: [0, 22, 28, 12], ring: [-4, 24, 28, 12], pinky: [-9, 26, 26, 12] },
+  ready: { thumb: [8, 18, 14, 8], index: [6, 22, 28, 14], middle: [0, 24, 30, 14], ring: [-4, 26, 30, 14], pinky: [-9, 28, 28, 13] },
+  hold:  { thumb: [12, 16, 10, 6], index: [5, 24, 28, 12], middle: [0, 26, 30, 13], ring: [-4, 28, 30, 13], pinky: [-9, 30, 28, 12] },
+  grip:  { thumb: [10, 24, 18, 8], index: [4, 36, 46, 22], middle: [0, 38, 48, 24], ring: [-3, 40, 48, 24], pinky: [-7, 42, 46, 22] },
+};
+// 每拍 9 张（12 fps）：0 咚（掌根落下）、1 推、2 推到头、3 伸到远边、4 勾起、5 往回折、6 折上来压住、7 转、8 转到位（右手抬起预备下一推）
+const DSEQ = [{ s: .35, pr: .016 }, { s: .75, pr: .014 }, { s: 1, pr: .008 }, { s: 1 }, { s: 1, ph: .8 }, { s: 1, ph: 2.25 }, { s: 1, ph: 2.95, pr: .005 }, { s: 1, ph: 2.95, turn: .5, kb: .45 }, { s: 1, ph: 2.95, turn: 1, kb: .8 }];
+const HZ = [.035, 0, -.035];
+
+let S = null;
+function setup() {
+  if (S) return S;
+  const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(CAM.fov, W / H, 0.02, 20);
+  cam.position.set(...CAM.p); cam.lookAt(0, CAM.p[1] - CAM.p[2] * Math.tan(CAM.pitch * D2R), 0); cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+  const v = new THREE.Vector3(0, -(HOR - H / 2) / (H / 2), .5).unproject(cam).sub(cam.position).normalize(), zW = cam.position.z + v.z * (-cam.position.y / v.y);
+  const DZ = ZN - zW, board = new THREE.Mesh(new THREE.PlaneGeometry(XW, DZ), new THREE.MeshBasicMaterial({ map: boardTex(zW) }));
+  board.rotation.x = -Math.PI / 2; board.position.set(X0 + XW / 2, 0, (zW + ZN) / 2);
+  const shade = new THREE.Mesh(new THREE.PlaneGeometry(XW, DZ), new THREE.ShadowMaterial({ color: new THREE.Color(BG.warm.woodDark), opacity: .6 }));
+  shade.rotation.x = -Math.PI / 2; shade.position.set(board.position.x, .0004, board.position.z); shade.receiveShadow = true;
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(XW, .5), new THREE.MeshBasicMaterial({ color: new THREE.Color('#3A2632') })); front.position.set(X0 + XW / 2, -.25, ZN);
+  const lip = new THREE.Mesh(new THREE.PlaneGeometry(XW, .006), new THREE.MeshBasicMaterial({ color: new THREE.Color(mix(BG.warm.wood, BG.warm.woodHalo, .5)) })); lip.position.set(X0 + XW / 2, -.003, ZN + .0005);
+  for (const m of [board, shade, front, lip]) { m.userData.bg = true; m.material.userData.outlineParameters = { visible: false }; scene.add(m); }
+  const geo = SPH.clone(); geo.setAttribute('position', SPH.attributes.position.clone());
+  const dough = new THREE.Mesh(geo, toon(C('dough'), { t: .1, w: .0028 })); dough.castShadow = dough.receiveShadow = true; scene.add(dough);
+  // 面团顶上的干粉（S2 的那团面带过来）：取球面上半的固定一组顶点，每张跟着变形后的面贴着放，朝法线
+  const fr = rng(57), P0 = SPH.attributes.position, ids = []; for (let i = 0; i < P0.count && ids.length < 60; i++) if (P0.getY(i) > .35 && fr() < .03) ids.push([i, (1.4 + fr() * 2.6) * .001]);
+  const specks = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 7), toon(C('flour'), { line: false }), ids.length); specks.userData.ids = ids; specks.receiveShadow = true; scene.add(specks);
+  const hands = { L: makeHand('L'), R: makeHand('R') };
+  for (const k of ['L', 'R']) scene.add(hands[k].root, hands[k].arm);
+  sun(scene, [-0.6, 1.0, -0.38], 0.7, [0, 0.05, 0.05]);
+  return (S = { scene, cam, dough, hands, specks });
+}
+
+function place(H, pose, p, pitch, yaw, roll) {
+  H.pose(POSE[pose]); H.root.position.set(...p); H.root.rotation.set(pitch * D2R, yaw * D2R, roll * D2R, 'YXZ');
+}
+// 胳膊：hand3d 的 reachArm（前臂 + 上臂两段，肘在中间弯）。两个肩是同一个人的：身体中线 x = MAN.x，两肩相距 .40。
+// 这一镜机位只比台面高 30 cm、在台沿外 55 cm：照真人的肩高（台面上 35–45 cm）摆，上臂会从画面上角斜插进来、右肩的截口也进画；
+// 所以把肩压在画框下沿那个面以下 MAN.drop（截口和上臂都在画外），胳膊从画面下方两角进来（CONTINUITY：师傅在近侧，手从下沿进）。
+// 人跟着右手动：每张解出两肩中点的 z，让右肩到右腕正好 MAN.reach（胳膊微弯：揉面时胳膊基本是直的，靠上身压）；
+// 右手往前探的时候上身往左拧（右肩往前、左肩往后，最多 MAN.twist°），左胳膊不至于被挤成一团。肘尖往外、略往下（肩压低了，肘再往下就扎进台面）；左肘多往下一点，左胳膊从左下角进。
+const MAN = { x: .03, w: .20, reach: .55, z: [.46, .68], drop: .10, twist: 20, poleR: [1, -.3, 0], poleL: [-.7, -.5, 0] };
+const TB = Math.tan((CAM.pitch + CAM.fov / 2) * D2R), WR = new THREE.Vector3(), WL = new THREE.Vector3();
+// 伸到远边的四张（伸、勾、折、压）：手在面团远端、抬得高，右肩照常摆的话胳膊几乎拉直，前臂顺着面团右边从右上斜压下来、还占一大块窗。
+// 这几张右肩往右挪 5 cm、往台里挪 8 cm（off，米；仍在画框右下外），肘往右、往下、略往里沉（pole）→ 前臂从右边斜着进来，
+// 面团右边和前臂之间露出一条台面。挪 10 / 15 cm 时缝更宽，但前臂转到背光、整条变暗，每拍闪一次（见 stills/r6/s3-reach、s3-light）。左胳膊、其余各张不动。
+const FAR = { off: [.05, 0, -.08], pole: [1, -.4, -.2] };
+function arms(s, far) {
+  const { R, L } = s.hands; R.root.updateMatrixWorld(true); L.root.updateMatrixWorld(true); R.B.wrist.getWorldPosition(WR); L.B.wrist.getWorldPosition(WL);
+  const a = Math.min(MAN.twist, Math.max(-8, (WL.z - WR.z) * 100)) * D2R;
+  const at = (zc, sd) => { const z = zc - sd * MAN.w * Math.sin(a); return [MAN.x + sd * MAN.w * Math.cos(a), CAM.p[1] - (CAM.p[2] - z) * TB - MAN.drop, z]; };
+  let lo = MAN.z[0], hi = MAN.z[1];
+  for (let k = 0; k < 20; k++) { const m = (lo + hi) / 2, q = at(m, 1); if (Math.hypot(q[0] - WR.x, q[1] - WR.y, q[2] - WR.z) < MAN.reach) lo = m; else hi = m; }
+  const zc = (lo + hi) / 2;
+  const sR = at(zc, 1); if (far) for (let j = 0; j < 3; j++) sR[j] += FAR.off[j];
+  R.reachArm(sR, { pole: far ? FAR.pole : MAN.poleR });
+  L.reachArm(at(zc, -1), { pole: MAN.poleL });
+}
+// 绕面团中心（竖轴）转 a 弧度
+const rotY = ([x, y, z], a) => [x * Math.cos(a) + z * Math.sin(a), y, -x * Math.sin(a) + z * Math.cos(a)];
+
+function act(s, lt) {
+  const n = Math.floor(lt * 12 + 1e-6), beat = Math.min(3, Math.floor(n / 9)), i = Math.min(8, n - beat * 9), last = beat === 3;
+  const st = { ...DSEQ[i], seam: beat > 0, hx: .045, hz: HZ[Math.min(i, 2)] }, yw = (st.turn || 0) * Math.PI / 2;
+  st.yaw = yw; doughGeo(st, s.dough.geometry); dust(s);
+  const g = s.dough.geometry;
+  // 右手
+  if (i <= 2) place(s.hands.R, 'push', [.045, topAt(g, .045, HZ[i] + .01) + .004, HZ[i]], 4, 10, -8);
+  else if (i <= 6) {
+    const tip = xf(.3, -.02, -.95, { ...st, yaw: 0 }, [0, 0, 0]), pt = [-40, -40, -30, -14][i - 3], pz = pitchOff(pt);
+    place(s.hands.R, i === 3 ? 'reach' : i === 6 ? 'press' : 'hook', [tip[0], tip[1] + pz[0], tip[2] + pz[1]], pt, 10, -6);
+  } else if (last) { const p = rotY([.065, 0, 0], yw * .3); place(s.hands.R, 'press', [p[0], topAt(g, p[0], p[2]) + .004, p[2]], 2, 10 + yw / D2R * .4, -8); }
+  else place(s.hands.R, 'ready', i === 7 ? [.07, .135, .12] : [.055, .125, .09], 12, 8, -8);
+  // 左手：扶住左肩；转的两张扣住左侧带着面团转（手在面上滑：位置只跟 35%，不挡到面团前面）
+  const lp = rotY([-.1, 0, .02], yw * .35), ly = topAt(g, lp[0] + .012 * Math.cos(yw * .35), lp[2]);
+  place(s.hands.L, i >= 7 ? 'grip' : 'hold', [lp[0], Math.max(.03, ly * .82), lp[2]], -6, -10 + yw / D2R * .3, 38);
+  arms(s, i >= 3 && i <= 6);
+  return { st, beat, i };
+}
+const MO = new THREE.Object3D(), NV = new THREE.Vector3();
+function dust(s) {
+  const g = s.dough.geometry, a = g.attributes.position.array, nm = g.attributes.normal.array;
+  s.specks.userData.ids.forEach(([i, r], k) => {
+    NV.set(nm[i * 3], nm[i * 3 + 1], nm[i * 3 + 2]); MO.position.set(a[i * 3], a[i * 3 + 1], a[i * 3 + 2]).addScaledVector(NV, .0007);
+    MO.lookAt(MO.position.x + NV.x, MO.position.y + NV.y, MO.position.z + NV.z); MO.scale.setScalar(r); MO.updateMatrix(); s.specks.setMatrixAt(k, MO.matrix);
+  });
+  s.specks.instanceMatrix.needsUpdate = true;
+}
+// 勾着远边的手：弯起来的指尖在手框里约 (0, -.03, -.075)，手框原点 = 指尖 + R·(0, .03, .075)
+function pitchOff(pt) { const a = pt * D2R; return [.03 * Math.cos(a) - .075 * Math.sin(a), .03 * Math.sin(a) + .075 * Math.cos(a)]; }
+
+function thud(g, cam, k) {   // 每拍「咚」：面团底两侧各一小团粉，2 张（2D 叠在三维上，位置由面团底两侧投到画面）
+  const al = k ? .55 : 1, col = mix(C('flour').f, SNOWLIGHT_RIM, .25), v = new THREE.Vector3();
   g.save(); g.globalAlpha = al;
-  for (const [x, dir] of [[S.xl, -1], [S.xr, 1]]) for (let j = 0; j < 3; j++) {
-    const cx = x + dir * (14 + j * 26 + k * 18), cy = YB - 8 - j * 10 - k * 8, r = sz * (1 - j * .2);
-    cel(g, [[cx - r, cy], [cx - r * .4, cy - r * .9], [cx + r * .5, cy - r * .8], [cx + r, cy], [cx, cy + r * .5]], { f: col, s: mix(col, DOUGH.s, .4), so: [0, -r * .3] });
+  for (const dir of [-1, 1]) {
+    v.set(dir * (DR + .012), .004, .03).project(cam); const x0 = (v.x + 1) / 2 * W, y0 = (1 - v.y) / 2 * H;
+    for (let j = 0; j < 3; j++) {
+      const cx = x0 + dir * (10 + j * 22 + k * 16), cy = y0 - 6 - j * 9 - k * 8, r = (k ? 26 : 19) * (1 - j * .2);
+      cel(g, [[cx - r, cy], [cx - r * .4, cy - r * .9], [cx + r * .5, cy - r * .8], [cx + r, cy], [cx, cy + r * .5]], { f: col, s: mix(col, C('dough').s, .4), so: [0, -r * .3] });
+    }
   }
   g.restore();
 }
 
+let MK = null, T1 = null, T2 = null;
+const fresh = x => { x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1; x.clearRect(0, 0, W, H); };
 export function draw(g, e, lt, A, t) {
   for (const x of [g, e]) { x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.filter = 'none'; }
   const pl = plate();
   g.drawImage(pl.c, 0, 0); e.drawImage(pl.e, 0, 0);
   A?.mods?.fx?.snow?.(g, e, t, { layers: ['far', 'mid'], clip: pl.P, lamp: [LAMP[0], LAMP[1], 170], glass: true, seed: 5 });
   g.drawImage(pl.f, 0, 0); e.drawImage(pl.fe, 0, 0);
-  const k = keyAt(lt), hd = A?.mods?.hands?.hand;
-  g.fillStyle = rgba('#24141E', .55); g.beginPath(); g.ellipse((k.d.xl + k.d.xr) / 2, YB + 4, (k.d.xr - k.d.xl) * .56, 16, 0, 0, TAU); g.fill();   // 面团压在台面上的影
-  HC = HC || canvas(W, H); DC = DC || canvas(W, H); T1 = T1 || canvas(W, H); T2 = T2 || canvas(W, H);
-  const [dc, dg] = DC, [hc, hg] = HC; fresh(dg); fresh(hg);
-  doughIn(dg, k.d, 11 + k.beat * 5); backlit(DC, 26, 78);
-  if (hd) handIn(hg, hd, k.L, 'L');   // 两只手都搭在面团上 → 画在面团前面
-  if (hd) handIn(hg, hd, k.R, 'R');
-  backlit(HC, 0, 16);
-  if (k.i < 2) thud(g, k.d, k.i);   // 粉团在手和面团后面
-  g.drawImage(dc, 0, 0); g.drawImage(hc, 0, 0);
-  e.save(); e.filter = 'brightness(0)'; e.drawImage(dc, 0, 0); e.drawImage(hc, 0, 0); e.restore();   // 剪影印进发光板
+  const s = setup();
+  const k = act(s, lt);
+  MK = MK || canvas(W, H); T1 = T1 || canvas(W, H); T2 = T2 || canvas(W, H);
+  const [mc, mx] = MK, [c1, x1] = T1, [c2, x2] = T2; fresh(mx);
+  draw3d(g, mx, s.scene, s.cam);                                       // 颜色层 ← 三维；mx ← 前景（面团、手、袖）的黑剪影
+  // 窗外冷光：剪影里离上沿 3.5 px、离两侧 2.5 px 以内的一圈 = 雪光蓝轮廓（只在整组前景的外轮廓上，不在手和面团互相挡的地方）
+  fresh(x2); x2.drawImage(mc, -2.5, 3.5); x2.globalCompositeOperation = 'destination-in'; x2.drawImage(mc, 2.5, 3.5);
+  fresh(x1); x1.drawImage(mc, 0, 0); x1.globalCompositeOperation = 'source-in'; x1.fillStyle = SNOWLIGHT_RIM; x1.fillRect(0, 0, W, H);
+  x1.globalCompositeOperation = 'destination-out'; x1.drawImage(c2, 0, 0);
+  x1.clearRect(0, 0, 5, H); x1.clearRect(W - 5, 0, 5, H); x1.clearRect(0, H - 6, W, 6);   // 出画的地方不是轮廓
+  g.drawImage(c1, 0, 0);
+  e.drawImage(mc, 0, 0);                                                // 剪影挡住发光板上的窗光
+  if (k.i < 2) thud(g, s.cam, k.i);
   return {};
 }

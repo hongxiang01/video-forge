@@ -1,231 +1,306 @@
-// S9 插入（24.0–27.0 s）—— 斜俯特写一只红沿白瓷碗，面已在碗里。
-// 24.0–24.75 焦点转移：前景热气层 σ 0 → 8 px、不透明度 → 0.6，碗层 σ 6 → 0（§9 附 2，ease-in-out）；热气层里的吊灯高光换成 4 个硬边圆形光斑。
-// 24.75 师傅右手握勺从左边入画浇一勺汤（3 张硬边水柱 + 4 片小水花）；25.5 左手从左上入画撒一撮葱，25.875 停半拍，26.25 再一撮（各 3 张：指缝松开 → 落 → 落定）；
-// 26.25–27.0 红碗沿上一道高光滑过。色值：TREATMENT §4.3 碗、§4.4 熟面条 / 汤 / 葱花。非主构图镜头，屏幕坐标直接布局；光从左上来。
-// 连贯（CONTINUITY.md）：柜台上师傅在左、老主顾在右 → 两只手都从左 / 左上进；两撮葱落在碗心偏左、偏右，和 S10 碗里的摆法一样。
-import { W, H, TAU, cel, path, ribbon, line, airbrush, mix, rgba, rng, hash, canvas } from '../lib/cel.js';
+// S9 插入（24.0–27.0 s）—— 三渲二版（2D 版原样备份在 s9_2d.js）。斜俯特写柜台上的红沿白瓷碗，面已在碗里。
+// 24.0–24.75 焦点转移：前景热气层 σ 0 → 8 px、不透明度 → 0.6，碗层（三维渲染 + 台面）σ 6 → 0（§9 附 2，ease-in-out）；热气层里的吊灯高光换成 4 个硬边圆形光斑。
+// 24.75 师傅右手握勺从左上入画浇一勺汤；25.5 左手从左上入画撒一撮葱，25.875 停半拍，26.25 再一撮；26.25–27.0 红碗沿上一道高光滑过；26.75 起右手从左边伸过来要推碗（切 S10）。
+// 三维：碗 = 车削（圈足 → 外壁 → 圆唇 → 内壁，红沿单独一块）；汤面 = 贴二维汤画（汤下的面、油星、吊灯倒影）的圆片；露出汤面的面条 = 压扁的管子；
+// 台面 = 贴木纹喷枪背景的平面 + 只收投影的平面。一盏白色方向光（吊灯在左上、仰角约 60°：碗内壁左侧背光、外壁左前受光，碗影往右落），硬边投影，不加环境光。
+// 葱花 = 三维小圈 / 小段（55 个，落定后浮在汤面上）；拇指位置由 fitThumb 在四指摆好后自动搜出（握勺：压在食指外侧那段柄上；捻葱：顶在食指、中指末节指肚下）。
+// 世界坐标（米）：X 向右，Y 向上，Z 朝镜头；碗心在原点，台面 y = 0。手、勺按 12 fps 换张，镜头和光每帧动。
+import * as THREE from 'three';
+import { W, H, TAU, line, airbrush, mix, rgba, rng, hash, canvas } from '../lib/cel.js';
 import { C, BG } from '../pal.js';
 import { steam } from '../fx.js';
-import { hand, digit, part, backOfHand, FW, FWK } from '../hands.js';
+import { toon, sun, draw3d, renderer } from '../lib3d.js';
+import { makeHand } from '../hand3d.js';
 
 const BOWL = C('bowl'), RIMC = C('rim'), POT = C('pot');
 const NOOD = { f: '#F2D99F', s: '#9C7066', l: '#8C6440', h: mix('#F2D99F', '#FFE6B8', .45) };
 const SOUP = { f: '#C8944F', d: '#6C3E2C', h: '#FFE6B8', oil: '#F8C863', u: mix('#C8944F', '#6C3E2C', .38) };
-const SCAL = { f: '#86B151', s: '#5A6A43', w: '#EEEABE', l: '#2E4A26' };
-const BC = [860, 560], BR = [520, 250], IR = [494, 233], SC = [860, 590], SR = [478, 214];   // 碗口、碗口内沿、汤面
-const PIN = [[742, 420], [968, 432]], LAND = [[770, 612], [1000, 628]];   // 两撮葱：捏合处、落点（碗心偏左、偏右）
-const SPILL = [790, 600];                                            // 汤柱落点
-const E = (c, rx, ry, r = 0) => { const p = new Path2D(); p.ellipse(c[0], c[1], rx, ry, r, 0, TAU); return p; };
 const clamp = v => Math.max(0, Math.min(1, v)), ease = v => v * v * (3 - 2 * v);
+const D2R = Math.PI / 180;
 
-function table(g) {
-  g.fillStyle = BG.warm.wood; g.fillRect(0, 0, W, H);               // 和 S10 柜台同一块木头：光圈外 #7A4A2A、光圈内 #A86E3C
-  airbrush(g, 880, 540, 1180, 640, BG.warm.woodHalo, .85, .8);       // 吊灯光圈（背景喷枪）
-  airbrush(g, 1750, 1000, 700, 420, BG.warm.woodDark, .6, .9);
-  for (let i = 0; i < 15; i++) {                                     // 木纹
-    const y = -30 + i * 78 + 14 * Math.sin(i * 1.7);
-    line(g, [[-20, y], [600, y + 9 * Math.sin(i * 1.3)], [1300, y - 7], [1940, y + 5 * Math.cos(i)]], rgba(BG.warm.grain, .55), 2.2);
+// —— 碗：口径 0.17 m、高 0.07 m（TREATMENT §4.1，和 S10 / S13 同一只）；LV = 汤面高度，RS = 汤面半径 ——
+const BR = 0.085, BH = 0.07, TH = 0.0042, LV = 0.05;
+const yB = u => 0.0085 + u * (BH - 0.0085 - TH / 2), rB = u => 0.039 + 0.046 * (1 - Math.pow(1 - u, 2.2));
+const RS = rB((LV - 0.0085) / (BH - 0.0085 - TH / 2)) - TH + 0.0004;
+function bowlMesh() {
+  const P = [[1e-4, 0.003, 0], [0.030, 0.003, 0], [0.032, 0, 0], [0.0365, 0, 0], [0.0378, 0.005, 0]];   // [r, y, 红?]
+  for (let i = 0; i <= 24; i++) { const u = i / 24; P.push([rB(u), yB(u), yB(u) > BH - 0.009 ? 1 : 0]); }
+  for (let i = 1; i < 8; i++) { const a = i / 8 * Math.PI; P.push([BR - TH / 2 + Math.cos(a) * TH / 2, yB(1) + Math.sin(a) * TH / 2, 1]); }
+  for (let i = 24; i >= 2; i--) { const u = i / 24; P.push([rB(u) - TH, yB(u), yB(u) > BH - 0.006 ? 1 : 0]); }
+  P.push([1e-4, 0.012, 0]);
+  const g = new THREE.Group(), mats = [toon(BOWL, { t: -.12, hi: .95 }), toon(RIMC, { t: -.12, hi: .93 })];
+  let cur = null, seg = [];
+  const flush = () => { if (seg.length < 2) return; const m = new THREE.Mesh(new THREE.LatheGeometry(seg.map(p => new THREE.Vector2(p[0], p[1])), 160), mats[cur]); m.castShadow = m.receiveShadow = true; g.add(m); };
+  for (let i = 0; i + 1 < P.length; i++) {                         // 红沿单独一块（外壁上沿 9 mm + 圆唇 + 内壁上沿 6 mm），交界是硬边
+    const tg = P[i][2] && P[i + 1][2] ? 1 : 0;
+    if (tg !== cur) { flush(); seg = [P[i]]; cur = tg; }
+    seg.push(P[i + 1]);
   }
-  g.fillStyle = rgba('#3A2430', .78); g.fill(E([BC[0] + 80, BC[1] + 330], 430, 95));   // 碗投在台面上的硬边影（往右下）
+  flush();
+  return g;
 }
 
-function bowl(g, e) {
-  const [cx, cy] = BC, [rx, ry] = BR;
-  cel(g, [[cx - 200, cy + 330], [cx - 192, cy + 362, 1], [cx + 192, cy + 362, 1], [cx + 200, cy + 330]], { f: BOWL.s, l: BOWL.l, lw: 2 });   // 圈足
-  const body = [[cx - rx, cy, 1], [cx - rx * .9, cy + 150], [cx - rx * .58, cy + 290], [cx - 215, cy + 338, 1], [cx + 215, cy + 338, 1], [cx + rx * .58, cy + 290], [cx + rx * .9, cy + 150], [cx + rx, cy, 1]];
-  for (let j = 1; j < 30; j++) { const a = j / 30 * Math.PI; body.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); }
-  cel(g, body, { f: BOWL.f, s: BOWL.s, so: [-70, -10], h: BOWL.h, ho: [16, 2], l: BOWL.l, lw: 2 });
-  e.fillStyle = '#000'; e.fill(path(body));
-  const I = E(BC, IR[0], IR[1]);                                     // 内壁：左侧背光
-  g.save(); g.clip(I); g.fillStyle = BOWL.s; g.fill(I); g.fillStyle = BOWL.f; g.fill(E([cx + 64, cy + 8], IR[0], IR[1])); g.restore();
-}
-
-function rimRing(g, e, lt) {
-  const [cx, cy] = BC, outer = E(BC, BR[0], BR[1]), inner = E(BC, IR[0], IR[1]), ring = new Path2D();
-  ring.addPath(outer); ring.addPath(inner);
-  g.save(); g.clip(ring, 'evenodd');
-  g.fillStyle = RIMC.s; g.fill(outer); g.fillStyle = RIMC.f; g.fill(E([cx - 8, cy - 7], BR[0], BR[1]));
-  const rm = [(BR[0] + IR[0]) / 2, (BR[1] + IR[1]) / 2];
-  g.strokeStyle = RIMC.h; g.lineCap = 'butt'; g.lineWidth = 9;      // 左上一段固定高光
-  g.beginPath(); g.ellipse(cx, cy, rm[0], rm[1], 0, 3.45, 4.2); g.stroke();
-  if (lt >= 2.25) {                                                  // 一道高光从左经前沿滑到右（每帧都动）
-    const a = Math.PI - clamp((lt - 2.25) / .75) * Math.PI;
-    g.lineWidth = 14; g.strokeStyle = RIMC.h; g.beginPath(); g.ellipse(cx, cy, rm[0], rm[1], 0, a - .05, a + .26); g.stroke();
-    g.lineWidth = 6; g.strokeStyle = '#FFE6B8'; g.beginPath(); g.ellipse(cx, cy, rm[0], rm[1], 0, a + .02, a + .17); g.stroke();
-    e.strokeStyle = '#FFD8B0'; e.lineWidth = 8; e.beginPath(); e.ellipse(cx, cy, rm[0], rm[1], 0, a, a + .2); e.stroke();
+// —— 台面背景板：和 S10 柜台同一块木头（光圈外 #7A4A2A、光圈内 #A86E3C），吊灯光圈偏左上，木纹顺 X ——
+const KP = 1800, X0 = -0.7, Z0 = -0.55, PW = 1.4, PH = 1.05;
+function plate() {
+  const [c, x] = canvas(Math.round(PW * KP), Math.round(PH * KP)), B = BG.warm, R = rng(909);
+  const toP = (X, Z) => [(X - X0) * KP, (Z - Z0) * KP];
+  x.fillStyle = B.wood; x.fillRect(0, 0, c.width, c.height);
+  airbrush(x, ...toP(-0.05, -0.04), 0.42 * KP, 0.34 * KP, B.woodHalo, .85, .8);   // 吊灯光圈
+  airbrush(x, ...toP(0.5, 0.32), 0.5 * KP, 0.3 * KP, B.woodDark, .6, .9);
+  for (let i = 0; i < 26; i++) {                                    // 木纹
+    const z = Z0 + 0.02 + i * 0.04 + 0.008 * Math.sin(i * 1.7), pts = [];
+    for (let X = X0 - 0.05; X < X0 + PW + 0.1; X += 0.12) pts.push(toP(X, z + 0.004 * Math.sin(X * 9 + i * 1.3) * (0.6 + R())));
+    line(x, pts, rgba(B.grain, .55), 2.4 + R() * 1.4);
   }
-  g.restore();
-  g.strokeStyle = RIMC.l; g.lineWidth = 2.4; g.stroke(outer); g.lineWidth = 2; g.stroke(inner);
+  return c;
 }
 
-// 熟面条：汤面上露 7 个弧，其余藏在汤下（汤的暗部色画外形，不描边）
+// —— 汤面：二维画在贴图里（远侧 = 贴图上方）。汤下的面（汤的暗部色，不描边）、油星（按一拍两格微微漂）、吊灯倒影（硬边）——
+const TN = 1024, tp = (x, z) => [(x / RS * .5 + .5) * TN, (z / RS * .5 + .5) * TN], TK = TN / (2 * RS);
 const ARCS = Array.from({ length: 7 }, (_, i) => {
   const a = i / 7 * TAU + hash(i + 9) * .5;
-  return { c: [SC[0] - 10 + Math.cos(a) * 130 * hash(i + 2), SC[1] - 10 + Math.sin(a) * 60 * hash(i + 3)], r: 150 + 110 * hash(i + 4), a0: a + 2.2, span: 1.3 + .8 * hash(i + 5) };
+  return { c: [-0.002 + Math.cos(a) * 0.012 * hash(i + 2), 0.003 + Math.sin(a) * 0.012 * hash(i + 3)], r: 0.024 + 0.02 * hash(i + 4), a0: a + 2.2, span: 1.3 + .8 * hash(i + 5) };
 });
-const arcPts = (q, a0, span) => Array.from({ length: 16 }, (_, j) => { const a = a0 + span * j / 15; return [q.c[0] + Math.cos(a) * q.r, q.c[1] + Math.sin(a) * q.r * .5]; });
-
-function soup(g, e, lt) {
-  const S = E(SC, SR[0], SR[1]), I = E(BC, IR[0], IR[1]);
-  g.save(); g.clip(I); e.save(); e.clip(I);
-  g.fillStyle = SOUP.d; g.fill(S); g.fillStyle = SOUP.f; g.fill(E([SC[0] + 14, SC[1] + 34], SR[0], SR[1]));   // 远侧一弯碗壁投下的深色
-  g.save(); g.clip(S);
-  for (const q of ARCS) { g.fillStyle = SOUP.u; g.fill(path(ribbon(arcPts(q, q.a0 + q.span - .2, TAU - q.span + .4), () => 20), true)); }   // 汤下的面
-  const R = rng(919);
-  for (let i = 0; i < 26; i++) {                                     // 油星，按一拍两格微微漂
-    const a = R() * TAU, r = Math.sqrt(R()) * .92, d = Math.floor(lt * 12) * .6, x = SC[0] + Math.cos(a) * SR[0] * r + Math.sin(d * .3 + i) * 3, y = SC[1] + Math.sin(a) * SR[1] * r;
-    const P = E([x, y], 3 + R() * 2.5, 2.4 + R() * 1.5); g.fillStyle = SOUP.oil; g.fill(P); e.fillStyle = rgba(SOUP.oil, .45); e.fill(P);
+const arcPt = (q, a) => [q.c[0] + Math.cos(a) * q.r, q.c[1] + Math.sin(a) * q.r];
+const REFL = [[-0.038, -0.03, 0.011], [-0.024, -0.04, 0.005], [-0.047, -0.019, 0.0036]];   // 吊灯倒影 [x, z, 半宽]
+function paintSoup(x, lt) {
+  x.fillStyle = SOUP.f; x.fillRect(0, 0, TN, TN);
+  x.lineCap = 'round'; x.strokeStyle = SOUP.u; x.lineWidth = 0.0045 * TK;
+  for (const q of ARCS) { x.beginPath(); for (let j = 0; j <= 40; j++) { const p = tp(...arcPt(q, q.a0 + q.span - .2 + (TAU - q.span + .4) * j / 40)); j ? x.lineTo(...p) : x.moveTo(...p); } x.stroke(); }
+  const R = rng(919), d = Math.floor(lt * 12) * .6;
+  for (let i = 0; i < 26; i++) {
+    const a = R() * TAU, r = Math.sqrt(R()) * .9 * RS, [px, py] = tp(Math.cos(a) * r, Math.sin(a) * r);
+    x.fillStyle = SOUP.oil; x.beginPath(); x.ellipse(px + Math.sin(d * .3 + i) * 3, py, 3 + R() * 2.5, 2.6 + R() * 1.6, 0, 0, TAU); x.fill();
   }
-  for (const [x, y, w] of [[600, 470, 86], [690, 452, 40], [560, 492, 30]]) {   // 吊灯倒影：硬边
-    const P = E([x, y], w, w * .3, -.08); g.fillStyle = SOUP.h; g.fill(P); e.fillStyle = '#FFE6B8'; e.fill(P);
-  }
-  g.restore();
-  for (const q of ARCS) {                                            // 露出汤面的弧
-    const P = path(ribbon(arcPts(q, q.a0, q.span), u => 22 * (.82 + .18 * Math.sin(u * Math.PI))), true);
-    cel(g, P, { f: NOOD.f, s: NOOD.s, so: [-4, -6], h: NOOD.h, ho: [3, 4], l: NOOD.l, lw: 1.8 });
-    e.fillStyle = '#000'; e.fill(P);
-  }
-  g.restore(); e.restore();
+  x.fillStyle = SOUP.h;
+  for (const [X, Z, w] of REFL) { x.beginPath(); x.ellipse(...tp(X, Z), w * TK, w * TK * .45, -.5, 0, TAU); x.fill(); }
+}
+// 露出汤面的面：沿弧走的管子，压扁成 4 mm 宽、2 mm 厚的扁条，两头没进汤里
+function noodleMesh(q, mat) {
+  const pts = Array.from({ length: 21 }, (_, j) => { const u = j / 20, [x, z] = arcPt(q, q.a0 + q.span * u); return new THREE.Vector3(x, -0.003 + 0.0046 * Math.sin(Math.PI * u), z); });
+  const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, 0.002, 10), mat);
+  m.position.y = LV; m.scale.y = .5; m.castShadow = m.receiveShadow = true; return m;
 }
 
-// —— 握勺的手（师傅右手，手背朝镜头；hands.js 右手本地坐标：指尖朝 −y，拇指在 −x）——
-// 勺柄斜穿掌心：从小鱼际（掌根小指侧）进，从食指根和拇指之间的虎口出来，往勺头去（本地 214°）。
-// 四指从柄上扣过去、指尖收在柄下：只看见近节往远处缩短和一排指节；食指离柄最近扣得最紧（最短），小指最松（最长），四指角度错开。
-// 拇指伸直、平压在柄上面，指尖朝勺头（拇指盖住柄，柄从拇指尖前面露出来）。锚点 = 拇指近节下面那一点柄轴
-const LADLE_DIR = 214;
-// 粗剪第 3 轮：四指不再用 four() 一个角度排开，每根各自摆（指长 × 节比、粗细同 hands.js）：[指根, 三节方向°, 三节透视缩短]，小 → 食
-const FLEN = { l: .50, r: .63, m: .68, i: .62 }, PHL = [.45, .30, .25], FO = ['l', 'r', 'm', 'i'];
-const fingers = (set, id) => set.map(([b, angs, k], j) => digit(b, angs, PHL.map((p, q) => FLEN[FO[j]] * p * k[q]).filter(v => v > .005),
-  { w: FW * FWK[FO[j]], back: true, cal: FO[j] === 'i' ? -1 : 0, id: id + j })).flat();
-function ladlePose() {
-  const palm = part('skin', ['W', [-.47, -.06], [-.25, -.13], [-.02, -.16], [.20, -.14], [.40, -.08], [.50, .06], [.52, .40], [.42, .84, 1], [-.30, .86, 1], [-.44, .62], [-.55, .30], [-.57, .08]]);
-  backOfHand(palm, [[.34, -.07], [.13, -.13], [-.10, -.14], [-.33, -.09]], [.06, .80], 11);
-  // 四指包住斜穿掌心的柄：近节往远处缩短，中节顺着柄的斜向往拇指一侧收（指尖往虎口聚），末节藏在柄底下；越靠虎口扣得越紧、露得越短，四根角度错开
-  const fing = fingers([[[.32, -.03], [-72, -92, -97], [.46, .34, 0]], [[.13, -.12], [-83, -99, -101], [.56, .34, 0]],
-    [[-.095, -.13], [-93, -106, -107], [.54, .32, 0]], [[-.33, -.08], [-103, -118, -117], [.38, .27, 0]]], 60);   // 小指缩在无名指底下一点
-  // 拇指：掌骨沿掌边上去，近节斜搭上柄，末节顺柄压住、往柄一侧回弯一点（关节读得出来，不是一根直棍）
-  const thumb = digit([-.45, .52], [-104, -152, -143], [.42, .26, .22], { w: .27, nail: true, back: true, id: 37 });
-  return { off: [.75, .04], arm: { w: [.06, .85], a: 101 }, parts: [...thumb, palm, ...fing] };   // 手腕往小指一侧折一点（倒汤时腕是斜的）
+// —— 勺：压扁的半球勺头（口在勺本地 y = 0）+ 从勺口左沿斜着往上的长柄（柄 16° 仰角）。勺本地：柄朝 −X ——
+const HAN = 16 * D2R, RC = 0.032, HD = new THREE.Vector3(-Math.cos(HAN), Math.sin(HAN), 0), HA = new THREE.Vector3(-RC + 0.001, 0.002, 0), GRIP = 0.10;
+const SOUPC = { f: SOUP.f, s: SOUP.d, l: SOUP.d, h: SOUP.h };
+function ladleMesh() {
+  const g = new THREE.Group(), mat = toon(POT, { t: .1, hi: .86, w: .0026 }), pts = [];
+  for (let i = 0; i <= 12; i++) { const a = -Math.PI / 2 + i / 12 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(1e-4, Math.cos(a) * RC), Math.sin(a) * RC * .8)); }
+  pts.push(new THREE.Vector2(RC - 0.0008, 0.0009));
+  for (let i = 12; i >= 0; i--) { const a = -Math.PI / 2 + i / 12 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(1e-4, Math.cos(a) * (RC - 0.0016)), Math.sin(a) * (RC * .8 - 0.0016))); }
+  const cup = new THREE.Mesh(new THREE.LatheGeometry(pts, 64), mat);
+  const LH = 0.25, hdl = new THREE.Mesh(new THREE.CapsuleGeometry(0.0045, LH, 6, 16), mat);
+  hdl.position.copy(HA).addScaledVector(HD, LH / 2); hdl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), HD); hdl.scale.set(1, 1, .75);
+  const fill = new THREE.Mesh(new THREE.CircleGeometry(RC - 0.0035, 48), toon(SOUPC, { t: .05, line: false }));
+  fill.rotation.x = -Math.PI / 2; fill.position.y = -0.005;
+  for (const m of [cup, hdl, fill]) { m.castShadow = m.receiveShadow = true; g.add(m); }
+  g.userData.fill = fill; return g;
+}
+// 握点：勺本地里，柄上离勺口 GRIP 处；x = 顺柄朝勺头，y = 柄的「上面」（拇指压在这一侧）
+const GRIP_L = new THREE.Matrix4().makeBasis(HD.clone().negate(), new THREE.Vector3(Math.sin(HAN), Math.cos(HAN), 0), new THREE.Vector3(0, 0, 1)).setPosition(HA.clone().addScaledVector(HD, GRIP));
+// 手框里的握点（摆好手型后量）：原点 = 食指、小指两个指圈中心的中点，x = 小指 → 食指（朝勺头；往指尖方向斜 27°：柄斜穿掌心，从掌根小指侧到虎口），y = 朝拇指
+function gripFrame(Hd) {
+  Hd.root.position.set(0, 0, 0); Hd.root.quaternion.identity(); Hd.root.updateMatrixWorld(true);
+  const wp = n => Hd.B[n].getWorldPosition(new THREE.Vector3());
+  const loop = f => ['phalanx-proximal', 'phalanx-intermediate', 'phalanx-distal', 'tip'].map(s => wp(`${f}-finger-${s}`)).reduce((a, b) => a.add(b)).multiplyScalar(.25);
+  const ci = loop('index'), cp = loop('pinky'), o = ci.clone().add(cp).multiplyScalar(.5);
+  const x = ci.clone().sub(cp).normalize().add(new THREE.Vector3(0, 0, -.5)).normalize(), y = new THREE.Vector3(0, 1, 0).addScaledVector(x, -x.y).normalize();
+  return new THREE.Matrix4().makeBasis(x, y, x.clone().cross(y)).setPosition(o);
+}
+// 握勺手型：四指扣住柄（食指最紧、小指最松，各节角度错开），拇指伸直一点、顺着柄压在上面
+const P_LADLE = { thumb: [10, 18, 12, 8], index: [4, 62, 92, 52], middle: [0, 68, 96, 54], ring: [-4, 72, 96, 50], pinky: [-8, 76, 92, 48] };
+// 勺的关键张（12 fps，24.75 起 9 张：入 3 → 浇 4 → 回 2）：[勺头中心 x, y, z, 倾角（勺头右沿往下点）]
+const LKEY = [[-0.29, 0.16, 0.01, 0], [-0.16, 0.13, 0.01, .04], [-0.07, 0.115, 0.01, .14], [-0.035, 0.11, 0.012, .36], [-0.029, 0.108, 0.012, .58],
+  [-0.029, 0.108, 0.012, .62], [-0.032, 0.11, 0.012, .5], [-0.15, 0.13, 0.01, .06], [-0.31, 0.17, 0.01, 0]];
+const YAW = 35 * D2R;   // 柄往左、朝镜头斜：握勺的手在画面左上看得见
+
+let S = null;
+function setup() {
+  if (S) return S;
+  const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 16 / 9, 0.02, 10);
+  const tex = new THREE.CanvasTexture(plate()); tex.anisotropy = renderer().r.capabilities.getMaxAnisotropy();
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: tex }));
+  board.rotation.x = -Math.PI / 2; board.position.set(X0 + PW / 2, 0, Z0 + PH / 2);
+  const shade = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.ShadowMaterial({ color: new THREE.Color(BG.warm.woodDark), opacity: .6 }));
+  shade.rotation.x = -Math.PI / 2; shade.position.set(board.position.x, 0.0003, board.position.z); shade.receiveShadow = true;
+  for (const m of [board, shade]) { m.userData.bg = true; m.material.userData.outlineParameters = { visible: false }; }
+  const [sc, sx] = canvas(TN, TN), stex = new THREE.CanvasTexture(sc);
+  const soup = new THREE.Mesh(new THREE.CircleGeometry(RS, 128), toon({ f: '#FFFFFF', s: '#8A6B8E', l: SOUP.d }, { t: .05, map: stex, line: false }));
+  soup.rotation.x = -Math.PI / 2; soup.position.y = LV; soup.receiveShadow = true;
+  const nmat = toon(NOOD, { t: .1, hi: .9, w: .0024 });
+  const bowl = bowlMesh();
+  scene.add(board, shade, bowl, soup, ...ARCS.map(q => noodleMesh(q, nmat)));
+  const sweep = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: new THREE.Color('#FFE6B8') }));
+  sweep.material.userData.outlineParameters = { visible: false }; scene.add(sweep);
+  const ladle = ladleMesh(), smat = toon(SOUPC, { t: .1, hi: .8, w: .002 });
+  const stream = new THREE.Mesh(new THREE.BufferGeometry(), smat); stream.castShadow = true;
+  const drops = Array.from({ length: 4 }, () => { const m = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), smat); m.castShadow = true; return m; });
+  const hands = { L: makeHand('L'), R: makeHand('R') };
+  hands.R.pose(P_LADLE); const G = gripFrame(hands.R), G_INV = G.clone().invert();
+  const gx = new THREE.Vector3(), gy = new THREE.Vector3(), gz = new THREE.Vector3(), go = new THREE.Vector3().setFromMatrixPosition(G); G.extractBasis(gx, gy, gz);
+  P_LADLE.thumb = fitThumb(hands.R, P_LADLE, go.clone().addScaledVector(gx, 0.034).addScaledVector(gy, 0.0105));   // 拇指尖压在食指外侧那段柄的上面
+  for (const ph of [0, .3, .5, 1]) {                                 // 捻葱：拇指尖顶在食指、中指末节指肚下面，ph 越大越往指尖
+    const P = FINGERS_PINCH(ph); hands.L.root.position.set(0, 0, 0); hands.L.root.quaternion.identity(); hands.L.pose(P); hands.L.root.updateMatrixWorld(true);
+    const pad = f => hands.L.B[`${f}-finger-phalanx-distal`].getWorldPosition(new THREE.Vector3()).lerp(hands.L.B[`${f}-finger-tip`].getWorldPosition(new THREE.Vector3()), .3 + .45 * ph);
+    const dn = new THREE.Vector3(0, -1, 0).applyQuaternion(hands.L.B['index-finger-phalanx-distal'].getWorldQuaternion(new THREE.Quaternion()));
+    P_FIT[ph] = { ...P, thumb: fitThumb(hands.L, P, pad('index').add(pad('middle')).multiplyScalar(.5).addScaledVector(dn, 0.012)) };
+  }
+  const ring = new THREE.TorusGeometry(0.0016, 0.00065, 8, 16).rotateX(Math.PI / 2), stick = new THREE.CapsuleGeometry(0.0009, 0.0032, 4, 8).rotateZ(Math.PI / 2);
+  const gm = toon(SCAL, { t: .05, w: .0016 }), wm = toon({ f: SCAL.w, s: mix(SCAL.w, SCAL.s, .5), l: SCAL.l }, { t: .05, w: .0016 });
+  const bits = Array.from({ length: 55 }, (_, j) => { const ty = hash(j * 3.3), m = new THREE.Mesh(ty < .85 ? ring : stick, ty < .62 || ty >= .85 ? gm : wm); m.castShadow = true; return m; });
+  scene.add(ladle, stream, ...drops, ...bits);
+  for (const k of ['L', 'R']) scene.add(hands[k].root, hands[k].arm);
+  const L = sun(scene, [-0.55, 1.0, 0.12], 0.42, [-0.05, 0.05, 0]);
+  return (S = { scene, cam, L, sx, stex, sweep, ladle, stream, drops, hands, G_INV, bits });
 }
 
-// —— 勺：24.75 从左边入画，一拍两格 9 张：入 3 → 浇 4 → 回 2 ——
-// 关键形 [勺头中心 x, y, 倾角]：倾角顺时针（勺头右沿往下点、柄往上抬），整把勺连手一起转；柄朝左，手在柄尾、前臂从左上出画
-const LKEY = [[-90, 370, 0], [250, 402, .03], [500, 432, .12], [636, 444, .30], [648, 445, .36], [648, 445, .36], [646, 444, .32], [280, 410, .04], [-160, 380, 0]];   // 回 2 张就出画，给左手让路
-const LG = 390;                                                      // 勺头中心 → 握点
-function ladle(g, e, lt) {
-  const k = Math.floor((lt - .75) * 12 + 1e-6); if (k < 0 || k > 8) return;
-  const [x, y, tl] = LKEY[k], L = new DOMMatrix().translate(x, y).rotate(tl * 57.3);
-  const tp = (px, py) => { const p = L.transformPoint({ x: px, y: py }); return [p.x, p.y]; };
-  const hdl = ribbon([tp(-104, -8), tp(-260, -12), tp(-LG - 70, -14)], u => 24 - 6 * u);
-  cel(g, hdl, { f: POT.f, s: POT.s, so: [-5, -6], h: POT.h, ho: [3, 3], l: POT.l, lw: 2 });
-  const gp = tp(-LG, -13);
-  hand(g, e, { pose: ladlePose, x: gp[0], y: gp[1], s: 250, rot: tl - LADLE_DIR * Math.PI / 180, side: 'R', light: 'warm', arm: 3.2 });
-  const body = [[-118, 0, 1], [-104, 52], [-56, 92], [0, 102], [56, 92], [104, 52], [118, 0, 1], [80, -36], [0, -48], [-80, -36]].map(([a, b, s]) => [...tp(a, b), s || 0]);
-  const B = cel(g, body, { f: POT.f, s: POT.s, so: [-14, -8], h: POT.h, ho: [8, 4], l: POT.l, lw: 2.2 });
-  const mouth = [[-108, -2], [-60, -34], [0, -42], [60, -34], [108, -2], [60, 24], [0, 30], [-60, 24]].map(([a, b]) => tp(a, b));
-  const full = k < 4;
-  cel(g, mouth, full ? { f: SOUP.f, s: SOUP.d, so: [10, 8], l: POT.l, lw: 1.8 } : { f: POT.s, l: POT.l, lw: 1.8 });
-  e.fillStyle = '#000'; e.fill(hdl instanceof Path2D ? hdl : path(hdl)); e.fill(B);
-  if (k >= 3 && k <= 6) {                                            // 汤柱：3 张循环；落点 4 片小水花
-    const v = k % 3, lip = tp(112, 4), m = [(lip[0] + SPILL[0]) / 2 + 14 + v * 5, (lip[1] + SPILL[1]) / 2 - 10];   // 从勺头右沿（往下点的那边）出汤
-    const spine = [lip, [lip[0] + 20, lip[1] + 40], m, [SPILL[0] + (v - 1) * 4, SPILL[1]]];
-    const P = path(ribbon(spine, u => 30 - 12 * u + (v === 1 ? 4 * Math.sin(u * 9) : 0)), true);
-    cel(g, P, { f: SOUP.f, s: SOUP.d, so: [8, 0], l: SOUP.d, lw: 2 });
-    line(g, spine.map(([a, b]) => [a - 5, b]), SOUP.h, 4); e.fillStyle = rgba('#FFE6B8', .5); e.fill(P);
-    for (let i = 0; i < 4; i++) {
-      const a = Math.PI + .5 + i / 3 * 2.1 + v * .15, Lp = 34 + 18 * hash(i + v * 4), c = Math.cos(a), s = Math.sin(a), b0 = [SPILL[0] + c * 12, SPILL[1] + s * 6];
-      cel(g, [[b0[0] - s * 7, b0[1] + c * 4], [b0[0] + c * Lp, b0[1] + s * Lp * .6, 1], [b0[0] + s * 7, b0[1] - c * 4]], { f: SOUP.f, h: SOUP.h, ho: [2, 2], l: SOUP.d, lw: 1.6 });
+// —— 撒葱：师傅左手掌心朝下、手腕往下折 25°，拇指一侧朝镜头；食指、中指并着微弯，拇指从下面顶在两指指肚上，捻（ph 0 → 1）= 拇指顺指肚往指尖推、两指略张，葱从指缝漏下去 ——
+const SCAL = { f: '#86B151', s: '#5A6A43', w: '#EEEABE', l: '#2E4A26' };
+const FINGERS_PINCH = ph => ({ index: [3 + 2 * ph, 44, 50 - 8 * ph, 22 - 6 * ph], middle: [-1 - 2 * ph, 46, 50 - 8 * ph, 22 - 6 * ph], ring: [-4, 58, 72, 36], pinky: [-9, 64, 70, 34] });
+const P_FIT = {}, P_PINCH = ph => P_FIT[ph] || P_FIT[0];
+// 拇指自动摆：四指摆好后，在拇指四个角度里网格搜一遍 + 两轮细调，让拇指尖落到目标点（手框里）上
+function fitThumb(Hd, base, T) {
+  const tip = Hd.B['thumb-tip'], v = new THREE.Vector3(); let best = null;
+  Hd.root.position.set(0, 0, 0); Hd.root.quaternion.identity();
+  const tryP = th => { Hd.pose({ ...base, thumb: th }); Hd.root.updateMatrixWorld(true); const d = tip.getWorldPosition(v).distanceTo(T); if (!best || d < best.d) best = { d, th }; };
+  for (let s = -60; s <= 60; s += 10) for (let a = -10; a <= 90; a += 10) for (let b = 0; b <= 70; b += 10) for (const c of [5, 20, 35]) tryP([s, a, b, c]);
+  for (const st of [5, 2.5]) for (let it = 0; it < 3; it++) { const b0 = best.th; for (let i = 0; i < 4; i++) for (const dd of [-st, st]) { const th = b0.slice(); th[i] += dd; tryP(th); } }
+  return best.th;
+}
+const PIN = [new THREE.Vector3(-0.03, LV + 0.06, 0.006), new THREE.Vector3(0.02, LV + 0.06, 0.018)], LAND = [new THREE.Vector3(-0.022, LV, 0.01), new THREE.Vector3(0.026, LV, 0.02)];
+const FA = new THREE.Vector3(-1, 0.6, -0.12).normalize(), Q_PINCH = new THREE.Quaternion().setFromEuler(new THREE.Euler(-10 * D2R, -90 * D2R, 30 * D2R, 'YXZ'));   // 掌心朝下、往镜头侧斜 30°：看得见拇指顶在两指指肚下
+// 手的时间表（一拍两格）：入画 2 张（顺前臂方向滑进来）→ 25.5 捻（ph .5 → 1 → 1 → .3）→ 停半拍、手腕回收 → 2 张挪到第二撮 → 26.25 再捻 → 26.583 起 3 张顺前臂退出
+function pinchAt(lt) {
+  if (lt < 1.25 || lt >= 2.833) return null;
+  const f = Math.floor((lt - 1.25) * 12 + 1e-6), P0 = PIN[0], P1 = PIN[1], PH = [.5, 1, 1, .3];
+  const at = (P, d, ph = 0) => ({ p: P.clone().addScaledVector(FA, d), ph });
+  if (f < 1) return null;                                            // 勺先退出去，左手再进
+  if (f < 3) return at(P0, [0, 0.2, 0.06][f]);
+  if (f < 7) return at(P0, 0, PH[f - 3]);
+  if (f < 9) return at(P0, 0.006);                                   // 停半拍：手腕往回收一点
+  if (f < 11) { const u = f === 9 ? .45 : .88; return { p: P0.clone().lerp(P1, u).add(new THREE.Vector3(0, 0.008 * Math.sin(u * Math.PI), 0)), ph: 0 }; }
+  if (f < 12) return at(P1, 0);
+  if (f < 16) return at(P1, 0, PH[f - 12]);
+  return at(P1, [0.04, 0.12, 0.24][Math.min(2, f - 16)]);
+}
+function pinchHand(lt) {
+  const s = pinchAt(lt), Hd = S.hands.L; if (!s) return false;
+  Hd.root.position.set(0, 0, 0); Hd.root.quaternion.identity(); Hd.pose(P_PINCH(s.ph)); Hd.root.updateMatrixWorld(true);
+  const wp = n => Hd.B[n].getWorldPosition(new THREE.Vector3());
+  const pc = wp('thumb-tip').add(wp('index-finger-tip')).add(wp('middle-finger-tip')).multiplyScalar(1 / 3);   // 拇指和两指指肚相碰处 → 锚点
+  Hd.root.quaternion.copy(Q_PINCH); Hd.root.position.copy(s.p).sub(pc.applyQuaternion(Q_PINCH));
+  Hd.aimArm(FA.toArray());
+  if (lt < 2.25 && s.ph < .4) for (let j = 0; j < 7; j++) {         // 还捏着的葱：指肚之间露出几粒
+    const R = rng(4900 + j), a = R() * TAU, m = S.bits[48 + j];
+    m.visible = true; m.position.set(s.p.x + 0.002 + Math.cos(a) * 0.004, s.p.y - 0.004 - R() * 0.003, s.p.z + Math.sin(a) * 0.004); m.rotation.set(R() * 3, R() * 3, R() * 3);
+  }
+  return true;
+}
+// —— 切到 S10 前：师傅右手从左边伸过来要托碗（切在动作上，S10 头一张手已经托在碗上、接着压腕推）——
+// 手背朝上、斜对镜头，四指放松朝碗伸、越往小指越弯（等着从碗腹外侧托住），拇指张开（等着翻上碗沿）
+const P_REACH = { thumb: [24, -6, 6, 8], index: [6, 20, 24, 12], middle: [2, 24, 28, 14], ring: [-2, 28, 32, 16], pinky: [-6, 32, 36, 18] };
+const Q_REACH = (() => {
+  const y = new THREE.Vector3(-0.25, 0.85, 0.45).normalize(), f0 = new THREE.Vector3(0.9, -0.3, 0.1), f = f0.addScaledVector(y, -f0.dot(y)).normalize();
+  const z = f.clone().negate(), x = y.clone().cross(z);   // 手框：+Y = 手背（朝上、略朝镜头），−Z = 四指（朝碗）
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+})();
+function reachHand(lt) {
+  const f = Math.floor((lt - 2.75) * 12 + 1e-6), Hd = S.hands.R; if (f < 0) return false;
+  Hd.pose(P_REACH); Hd.root.quaternion.copy(Q_REACH);
+  Hd.root.position.set(...[[-0.30, 0.075, 0.035], [-0.20, 0.068, 0.035], [-0.15, 0.064, 0.035]][Math.min(2, f)]);
+  Hd.aimArm(new THREE.Vector3(0, 0, 1).applyQuaternion(Q_REACH).add(new THREE.Vector3(-0.6, 0.2, 0)).normalize().toArray());
+  return true;
+}
+function scallions(lt) {
+  for (let p = 0; p < 2; p++) {
+    const t0 = [1.5, 2.25][p]; if (lt < t0) continue;
+    const d = Math.floor((lt - t0) * 12 + 1e-6), P = PIN[p], Lp = LAND[p];
+    for (let j = 0; j < 24; j++) {
+      const R = rng(4100 + p * 97 + j), a = R() * TAU, u = Math.sqrt(R()), m = S.bits[p * 24 + j];
+      m.visible = true;
+      if (d === 0) m.position.set(P.x + 0.004 + Math.cos(a) * 0.007 * u, P.y - 0.012 - R() * 0.008, P.z + Math.sin(a) * 0.006 * u);   // 指缝松开
+      else if (d === 1) m.position.set((P.x + Lp.x) / 2 + Math.cos(a) * 0.016 * u, (P.y + LV) / 2 - 0.01 + (R() - .5) * 0.02, (P.z + Lp.z) / 2 + Math.sin(a) * 0.014 * u);   // 落
+      else m.position.set(Lp.x + Math.cos(a) * 0.026 * u, LV + 0.0005, Lp.z + Math.sin(a) * 0.026 * u * .8);   // 落定，浮在汤面上
+      m.rotation.set(d >= 2 ? 0 : R() * 3, R() * 6, d >= 2 ? 0 : R() * 3);
     }
   }
 }
 
-// —— 葱花 ——
-function piece(g, x, y, j, sz) {
-  const ty = hash(j * 3.3), r = sz / 2;
-  if (ty < .62) { cel(g, E([x, y], r, r * .82), { f: SCAL.f, s: SCAL.s, so: [-1.5, -2], l: SCAL.l, lw: 1.2 }); g.fillStyle = SCAL.w; g.fill(E([x, y], r * .42, r * .34)); }
-  else if (ty < .85) { cel(g, E([x, y], r, r * .82), { f: SCAL.w, l: SCAL.l, lw: 1.2 }); g.fillStyle = mix(SCAL.w, SCAL.f, .55); g.fill(E([x, y], r * .38, r * .3)); }
-  else cel(g, E([x, y], 9, 4, hash(j) * TAU), { f: SCAL.f, s: SCAL.s, so: [-1, -2], l: SCAL.l, lw: 1.2 });
-}
-// —— 捻葱的手（师傅左手，拇指一侧朝镜头；按 hands.js 右手本地坐标摆：指尖朝 −y、手背朝 −x、掌心朝 +x）——
-// 食指、中指并着、微弯，指肚朝下；拇指从下往上顶在两指指肚上。捻：ph 0 → 1 拇指顺指肚往指尖滑、食中两指略张开，葱从指缝漏下去；
-// 无名指、小指松松蜷在掌里（从食指和拇指圈出的空里露一点）；手腕往掌心一侧折 25°（前臂本地 65°）。锚点 = 拇指和食指指肚相碰处
-// 画面上 rot 135°：指尖朝右下、掌心朝左下（朝碗）、手背朝右上吃灯光，前臂往左上 200° 出画
-const PROT = Math.PI * .75, FA = [Math.cos(200 * Math.PI / 180), Math.sin(200 * Math.PI / 180)];
-function pinchPose(ph) {
-  const op = 4 * ph;
-  const little = digit([-.40, .34], [-12, 58, 112], [.21, .14, .11], { w: FW * FWK.l, back: true, id: 31 });
-  const ring = digit([-.43, .22], [-34, 34, 96], [.25, .17, .13], { w: FW * FWK.r, back: true, id: 32 });
-  // 中指在食指后面，比食指长、指尖越过食指尖一点露出来，指肚也压在拇指上；弯法和食指不一样（近节更斜、末节弯得少）
-  const middle = digit([-.47, .09], [-54 - op, -14 - op * 1.2, 8 - op * 1.4], [.306, .204, .17], { w: FW * FWK.m, back: true, id: 33 });
-  const palm = part('skin', ['W', [-.42, .08], [-.58, .05], [-.66, .30], [-.64, .62], [-.53, 1.10, 1], [.13, .80, 1], [.20, .60], [.12, .40], [-.08, .26], [-.30, .14]], {
-    cal: [[[-.30, .16], [-.12, .24], [-.13, .31], [-.24, .28], [-.32, .22]]],   // 虎口老茧
-    sp: [[[-.52, .55], [-.46, .51, 1], [-.42, .56], [-.47, .61, 1]]] });       // 手背侧一块老人斑
-  const index = digit([-.49, .15], [-50 - op, -8 - op * 1.3, 14 - op * 1.6], [.279, .186, .155], { back: true, cal: 1, id: 34 });
-  // 拇指不再是一根立着的木栓：根在大鱼际（掌心一侧、腕上方），掌骨往掌心一侧斜出去，近节、末节一节比一节往回弯，指肚扣到食指末节指肚上
-  //   → 拇指和食指之间圈出一个水滴形的空（无名指从空里露一点）；捻的时候拇指顺指肚往指尖推、慢慢伸直一点
-  const thumb = digit([.12, .58], [-72 + 3 * ph, -102 + 5 * ph, -132 + 8 * ph], [.25, .23, .22 + .02 * ph], { w: .27, nail: true, id: 35 });   // 指尖压在食指末节指肚上（在前面挡住食指尖）
-  return { off: [-.02, .05], arm: { w: [-.20, .95], a: 65 }, parts: [...little, ...ring, ...middle, palm, ...index, ...thumb] };   // off：拇指和食指指肚相碰处落在锚点上
-}
-// 手的时间表（一拍两格）：入画 3 张（顺前臂方向滑进来，最后一张过半格再回）→ 1.5 捻（ph .5 → 1 → 1 → .3 → 0）→ 停半拍、手腕回收 →
-// 2.0 起 2 张挪到第二撮的位置 → 2.25 再捻 → 2.583 起 3 张顺前臂退出画面
-function pinchAt(lt) {
-  if (lt < 1.25 || lt >= 2.833) return null;
-  const f = Math.floor((lt - 1.25) * 12 + 1e-6), P0 = PIN[0], P1 = PIN[1];
-  const at = (P, d, ph = 0) => ({ x: P[0] + FA[0] * d, y: P[1] + FA[1] * d, ph });
-  const PH = [.5, 1, 1, .3];
-  if (f < 1) return null;                                            // 勺先退出去，左手再进
-  if (f < 3) return at(P0, [0, 560, 150][f]);
-  if (f < 7) return at(P0, 0, PH[f - 3]);
-  if (f < 9) return at(P0, 16);                                      // 停半拍：手腕往回收一点
-  if (f < 11) { const u = f === 9 ? .45 : .88; return { x: P0[0] + (P1[0] - P0[0]) * u, y: P0[1] + (P1[1] - P0[1]) * u - 18 * Math.sin(u * Math.PI), ph: 0 }; }
-  if (f < 12) return at(P1, 0);
-  if (f < 16) return at(P1, 0, PH[f - 12]);
-  return at(P1, [120, 360, 680][Math.min(2, f - 16)]);
-}
-function scallions(g, lt, p) {
-  const t0 = [1.5, 2.25][p], d = Math.floor((lt - t0) * 12 + 1e-6), P = PIN[p];
-  for (let j = 0; j < 24; j++) {
-    const R = rng(4100 + p * 97 + j), a = R() * TAU, u = Math.sqrt(R()), sz = 13 + R() * 5, id = j + p * 24;
-    let x, y;
-    if (d === 0) { x = P[0] + 10 + Math.cos(a) * 30 * u; y = P[1] + 36 + Math.sin(a) * 22 * u; }                  // 指缝松开
-    else if (d === 1) { x = (P[0] + LAND[p][0]) / 2 + Math.cos(a) * 80 * u; y = (P[1] + LAND[p][1]) / 2 + 30 + Math.sin(a) * 64 * u; }   // 落
-    else { x = LAND[p][0] + Math.cos(a) * 120 * u; y = LAND[p][1] + Math.sin(a) * 120 * u * .5; }                  // 落定（汤面上压扁成椭圆分布）
-    piece(g, x, y, id, sz);
+// —— 浇汤：右手握勺（手框 = 勺的世界变换 × 握点 × 手框里握点的逆），勺口右沿往下点，汤柱 3 张循环 + 落点 4 片小水花 ——
+const _s = new THREE.Vector3(), _q = new THREE.Quaternion(), ONE = new THREE.Vector3(1, 1, 1);
+function ladle(lt) {
+  const k = Math.floor((lt - .75) * 12 + 1e-6), on = k >= 0 && k <= 8, Hd = S.hands.R;
+  S.ladle.visible = S.stream.visible = on; S.drops.forEach(m => (m.visible = false));
+  if (!on) return false;
+  const [x, y, z, tl] = LKEY[k];
+  _q.setFromEuler(new THREE.Euler(0, YAW, -tl, 'YXZ'));
+  const Lw = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), _q, ONE);
+  S.ladle.position.set(x, y, z); S.ladle.quaternion.copy(_q); S.ladle.userData.fill.visible = k < 5;
+  Hd.pose(P_LADLE);
+  Lw.clone().multiply(GRIP_L).multiply(S.G_INV).decompose(Hd.root.position, Hd.root.quaternion, _s);
+  Hd.aimArm(new THREE.Vector3(0, 0, 1).applyQuaternion(Hd.root.quaternion).add(new THREE.Vector3(-0.2, 0.25, 0)).normalize().toArray());   // 前臂顺着手往左上出画
+  S.stream.visible = k >= 3 && k <= 6;
+  if (S.stream.visible) {
+    const v = k % 3, lip = new THREE.Vector3(RC * .97, 0.0006, 0).applyMatrix4(Lw), sp = new THREE.Vector3(lip.x + 0.03 + v * 0.002, LV - 0.002, lip.z + 0.012);
+    const pts = Array.from({ length: 12 }, (_, j) => { const u = j / 11; return new THREE.Vector3(lip.x + (sp.x - lip.x) * Math.sqrt(u) + (v === 1 ? 0.0015 * Math.sin(u * 9) : 0), lip.y + (sp.y - lip.y) * u * u, lip.z + (sp.z - lip.z) * u); });
+    S.stream.geometry.dispose(); S.stream.geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 32, 0.0034 - 0.0004 * v, 10);
+    S.drops.forEach((m, i) => {
+      const a = Math.PI + .5 + i / 3 * 2.1 + v * .15, r = 0.006 + 0.002 * hash(i + v * 4), h = 0.006 + 0.004 * hash(i * 3 + v);
+      m.visible = true; m.position.set(sp.x + Math.cos(a) * r, LV + h * .5, sp.z - Math.sin(a) * r * .7);
+      m.rotation.set(Math.sin(a) * .7, 0, -Math.cos(a) * .7); m.scale.set(0.0016, h * .5, 0.0016);
+    });
   }
+  return true;
 }
-// —— 切到 S10 前：师傅右手从左边伸过来要推碗（切在动作上，S10 头一张手已经搭在碗上、接着压腕推）——
-// 手背朝镜头，四指并拢微弯往前伸（等着从碗壁外侧托住，越往小指越弯）、拇指张开朝上（等着搭到碗沿上）；rot 90°：指尖朝右、拇指朝上、前臂往左出画
-function reachPose() {
-  const palm = part('skin', ['W', [-.47, -.42], [-.28, -.50], [-.08, -.54], [.13, -.52], [.34, -.46], [.49, -.34], [.53, -.04], [.47, .30], [.37, .54, 1], [-.31, .56, 1], [-.44, .36], [-.57, .10], [-.61, -.08], [-.56, -.27]]);
-  backOfHand(palm, [[.36, -.40], [.13, -.48], [-.10, -.50], [-.33, -.44]], [.02, .50], 13);
-  const thumb = digit([-.50, .12], [-150, -133], [.30, .24], { w: .28, nail: true, back: true, id: 41 });   // 拇指张开朝上，末节往四指一侧微弯（等着勾到碗沿上）
-  // 四指放松往前伸：每个关节都带一点弯（越往小指越蜷 = 透视越短），各自往中指一侧偏几度；张开的角度、间距都不一样，不是一排平行的耙齿
-  const fing = fingers([[[.36, -.36], [-62, -70, -80], [.80, .52, .36]], [[.13, -.465], [-82, -86, -91], [.92, .70, .50]],
-    [[-.10, -.50], [-92, -91, -88], [1, .80, .60]], [[-.345, -.43], [-110, -103, -96], [.98, .86, .68]]], 80);   // 中指、无名指挨着，食指、小指各自撇开
-  return { arm: { w: [.03, .53], a: 100 }, parts: [...thumb, palm, ...fing] };   // 手腕往上折一点：前臂从左上斜着进来
+
+const pv = new THREE.Vector3();
+const proj = (x, y, z) => { pv.set(x, y, z).project(S.cam); return [(pv.x + 1) / 2 * W, (1 - pv.y) / 2 * H]; };
+// 镜头：斜俯 54° → 51°，方位从左 6° 慢慢绕到右 1°，同时极慢推近（每帧都动）；吊灯微微晃（光每帧都动）
+function frame(lt) {
+  const u = lt / 3, az = (-5 + 7 * u) * D2R, el = (38 - 3 * u) * D2R, d = 0.42 - 0.02 * ease(clamp(u)), tg = [-0.02, 0.075, 0.004];
+  S.cam.position.set(tg[0] + d * Math.cos(el) * Math.sin(az), tg[1] + d * Math.sin(el), tg[2] + d * Math.cos(el) * Math.cos(az));
+  S.cam.lookAt(...tg); S.cam.updateMatrixWorld();
+  const v = new THREE.Vector3(-0.55 + 0.03 * Math.sin(lt * 1.9), 1.0, 0.12 + 0.02 * Math.cos(lt * 1.3)).normalize();
+  S.L.position.set(-0.05 + v.x * 3, 0.05 + v.y * 3, v.z * 3);
 }
-function reachHand(g, e, lt) {
-  const f = Math.floor((lt - 2.75) * 12 + 1e-6); if (f < 0) return;
-  hand(g, e, { pose: reachPose, x: [-230, -40, 92][Math.min(2, f)], y: 650, s: 270, rot: Math.PI / 2, side: 'R', light: 'warm', arm: 2.6 });
-}
-function scallionHand(g, e, lt) {
-  for (let p = 0; p < 2; p++) if (lt >= [1.5, 2.25][p]) scallions(g, lt, p);   // 已经落下 / 正在落的
-  const s = pinchAt(lt); if (!s) return;
-  hand(g, e, { pose: () => pinchPose(s.ph), x: s.x, y: s.y, s: 300, rot: PROT, side: 'R', light: 'warm', arm: 3.4 });
-  if (lt < 2.25 && s.ph < .4) for (let j = 0; j < 7; j++) {         // 还捏着的葱：指肚之间露出几粒
-    const R = rng(4900 + j), a = R() * TAU, u = Math.sqrt(R());
-    piece(g, s.x + 8 + Math.cos(a) * 16 * u, s.y + 12 + Math.sin(a) * 9 * u, 60 + j, 12 + R() * 4);
-  }
+
+// 26.25–27.0：一道高光从左经前沿滑到右（圆唇顶上一条弧带，每帧都动）
+function rimSweep(e, lt) {
+  const m = S.sweep; m.visible = lt >= 2.25; if (!m.visible) return;
+  const a = Math.PI - clamp((lt - 2.25) / .75) * Math.PI, len = .32;   // 世界角：π = 左，π/2 = 前，0 = 右
+  m.geometry.dispose(); m.geometry = new THREE.RingGeometry(BR - TH * .95, BR - TH * .1, 40, 1, -(a + len / 2), len);
+  m.rotation.x = -Math.PI / 2; m.position.y = BH + 0.0002;
+  return () => {
+    const pts = Array.from({ length: 9 }, (_, j) => { const b = a - len * .35 + len * .7 * j / 8; return proj(Math.cos(b) * (BR - TH / 2), BH, Math.sin(b) * (BR - TH / 2)); });
+    line(e, pts, '#FFD8B0', 8);
+  };
 }
 
 let LY = null;
 const clr = x => { x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.filter = 'none'; x.clearRect(0, 0, W, H); return x; };
 export function draw(g, e, lt, A, t) {
+  setup();
   if (!LY) LY = [canvas(W, H), canvas(W, H), canvas(W, H), canvas(W, H)];
   const [[bc, b], [bec, be], [sc, s], [sec, se]] = LY;
   [b, be, s, se].forEach(clr);
-  table(b); bowl(b, be); soup(b, be, lt); rimRing(b, be, lt); ladle(b, be, lt); scallionHand(b, be, lt); reachHand(b, be, lt);   // 碗层
-  steam(s, se, t, { preset: 'S9', x: SC[0] - 30, y: SC[1] + 30, spread: 210, lampSide: -1, seed: 909 });   // 前景热气层
+  frame(lt);
+  paintSoup(S.sx, lt); S.stex.needsUpdate = true;
+  const glow = rimSweep(be, lt), R = ladle(lt);
+  S.bits.forEach(m => (m.visible = false)); scallions(lt);
+  const Lh = pinchHand(lt), Rr = !R && reachHand(lt);
+  S.hands.R.root.visible = S.hands.R.arm.visible = R || Rr;
+  S.hands.L.root.visible = S.hands.L.arm.visible = Lh;
+  draw3d(b, be, S.scene, S.cam);                                     // 碗层
+  for (const [X, Z, w] of REFL) {                                    // 汤面吊灯倒影进发光层
+    const [x0, y0] = proj(X, LV, Z), [x1] = proj(X + w, LV, Z), [, y1] = proj(X, LV, Z + w);
+    be.fillStyle = '#FFE6B8'; be.beginPath(); be.ellipse(x0, y0, Math.abs(x1 - x0), Math.abs(y1 - y0) * .5 + 1, -.3, 0, TAU); be.fill();
+  }
+  if (glow) glow();
+  const [sx0, sy0] = proj(-0.004, LV, 0.006);
+  steam(s, se, t, { preset: 'S9', x: sx0 - 30, y: sy0 + 30, spread: 210, lampSide: -1, seed: 909 });   // 前景热气层
   const k = ease(clamp(lt / .75)), sb = 6 * (1 - k), ss = 8 * k, so = 1 - .4 * k;
   for (const [x, lc, sc2] of [[g, bc, sc], [e, bec, sec]]) {
     x.save(); x.setTransform(1, 0, 0, 1, 0, 0);
@@ -234,7 +309,7 @@ export function draw(g, e, lt, A, t) {
     x.restore();
   }
   if (ss > 3) for (const [x, y, d] of [[430, 200, 64], [560, 120, 44], [330, 360, 52], [1500, 150, 40]]) {   // 吊灯高光 → 硬边圆形光斑
-    const P = E([x, y], d / 2, d / 2); g.fillStyle = rgba('#FFE6B8', .3); g.fill(P); e.fillStyle = rgba('#FFE6B8', .3); e.fill(P);
+    const P = new Path2D(); P.ellipse(x, y, d / 2, d / 2, 0, 0, TAU); g.fillStyle = rgba('#FFE6B8', .3); g.fill(P); e.fillStyle = rgba('#FFE6B8', .3); e.fill(P);
   }
   return {};
 }

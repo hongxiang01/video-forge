@@ -1,205 +1,296 @@
-// S6 —— 切面 · 一镜三段（TREATMENT §4 镜头表 S6、§4.4 生面条、§5 15.00–18.00）
-// 15.0–16.5 横摇跟刀：每八分一刀（9 帧按 3-2-2-2：落刀那张多停一帧），刀每刀左移 30 px，镜头匀速摇 120 px；
-// 16.5–17.25 推到刀刃（100% → 150%，ease-in，锚点刀刃），同速 2 刀；17.25–18.0 快速拉回（150% → 100%，ease-out），
-// 双手从中间抓起面条一抖：抓起 → 抖开成扇形 → 落定（3 张），干粉按 24 帧落下。
-// 场景坐标 = 100% 时的屏幕 px；机位：台面高度略俯、从左前方看，面块沿 X 横放，进深方向在画面上朝右上（DEP）。
-import { cel, path, poly, line, mix, rgba, rng, hash, canvas, airbrush, vgrad, ribbon, flutter, TAU } from '../lib/cel.js';
+// S6 —— 切面 · 三渲二（TREATMENT §4 镜头表 S6、§4.4 生面条、§5 15.00–18.00）。2D 版原样备份在 s6_2d.js。
+// 世界坐标（米）：X 向右，Y 向上，Z 朝师傅（近侧）；台面 y = 0。叠好的面片沿 X 横放（5 层折叠，每层一条圆边薄片），刀刃沿 Z。
+// 机位从左前方斜俯：15.0–16.5 跟刀匀速横移；16.5–17.25 以刀刃入面处为锚点推近到 150%（ease-in）；17.25–18.0 拉回（ease-out）到抖面。
+// 刀和手按 3-2-2-2 帧换张（八分 9 帧 4 张，落刀那张多停一帧，落在拍上），抖面按 12 fps，镜头每帧动。一盏方向光（吊灯在左上），硬边投影。
+import * as THREE from 'three';
+import { line, mix, rgba, rng, hash, canvas, airbrush, vgrad, TAU } from '../lib/cel.js';
 import { C, BG } from '../pal.js';
-import { hand, digit, part, FW, FWK } from '../hands.js';
+import { toon, sun, draw3d, renderer } from '../lib3d.js';
+import { makeHand } from '../hand3d.js';
 
-// —— 这个镜头自己的手型（本地 掌宽 = 1；切面段直接按画面朝向摆，rot = 0、side 'R' 不镜像）——
-// 师傅站在近侧（镜头这边）：两条前臂都从画面下方 / 左下带弧度伸进来，右臂（握刀）离镜头更近、压在左臂前面。
-// 弯袖（同 S4 的做法）：hand() 自带的直筒袖只留袖口一截（arm: .04），这条袖子接在袖口下面、画在手掌下面（袖口最后画，盖住接缝）。
-// 从腕点 W0 沿本地方向 a（度）出去，中线越往肘越往 bend 一侧弯（二次曲线：+ = 往 n = [−d.y, d.x] 一侧）；越往外越粗（离镜头近）；三道从袖边起的硬边斜褶
-const DG = Math.PI / 180;
-function sleeve(W0, a, bend, grow = .12) {
-  const d = [Math.cos(a * DG), Math.sin(a * DG)], n = [-d[1], d[0]];
-  const P = (t, x, k) => { const b = bend * Math.max(0, t - .6) ** 2, q = [W0[0] + d[0] * t + n[0] * (x + b), W0[1] + d[1] * t + n[1] * (x + b)]; return k ? [...q, 1] : q; };
-  const hw = (t, sg) => .47 + grow * Math.min(1, Math.max(0, t - .56) / 2.6) + (sg > 0 ? .05 * Math.sin(Math.PI * Math.min(1, Math.max(0, (t - .9) / 2.4))) : 0);
-  const fold = (t0, sg, t1, x1, wd) => {   // 一道硬边褶：从袖边起的楔形，弯着往袖子中间收成尖
-    const m2 = P(t0 + wd + (t1 - t0 - wd) * .5, sg * (x1 + (hw(t0, sg) - x1) * .5) - sg * .015), tip = P(t1, sg * x1, 1);
-    return [[P(t0, sg * (hw(t0, sg) + .1), 1), P(t0 + (t1 - t0) * .45, sg * (x1 + (hw(t0, sg) - x1) * .58) + sg * .02), tip, m2, P(t0 + wd, sg * (hw(t0 + wd, sg) + .1), 1)], [m2, tip]];
+const D2R = Math.PI / 180, V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+const ease = u => 1 - (1 - u) * (1 - u);
+const NW = 0.010, LAY = 5, LT = 0.0048, DD = 0.104, TOP = LAY * LT * .96;   // 面条宽、层数、每层厚、面块进深、面块顶高
+const BX0 = -0.30, BX1 = 0.27, KX0 = 0.07;                                 // 面块左端、右端、第一刀
+const KB = { L: 0.27, H: 0.085, T: 0.0026, z: -0.012 };                    // 刀身：长（沿 Z）、高、厚、中心 z
+const HA = 15 * D2R, HL = 0.12, HW = V3(0, Math.sin(HA), Math.cos(HA));    // 木柄：从刀背后端往师傅那边上翘 15°
+const HI = '#FFF4DC', GLOW = new THREE.MeshBasicMaterial({ color: '#8A7458' });
+
+// —— 背景板：台面（同一块案板：横向木板 + 木纹 + 结疤 + 左上吊灯的光圈 + 撒粉）+ 墙（喷枪渐变），沿用 2D 版的画法 ——
+const KP = 1100, PX0 = -1.2, PZ0 = -0.55, PWm = 2.4, PDm = 1.5;
+function boardTex() {
+  const [c, x] = canvas(Math.round(PWm * KP), Math.round(PDm * KP)), w = c.width, h = c.height, B = BG.warm, R = rng(606);
+  const toP = (X, Z) => [(X - PX0) * KP, (Z - PZ0) * KP];
+  x.fillStyle = B.wood; x.fillRect(0, 0, w, h);
+  const pw = 0.135 * KP;
+  for (let i = 0, y0 = 0.03 * KP; y0 < h; i++, y0 += pw) {
+    x.fillStyle = mix(B.wood, i % 2 ? '#6A3C20' : '#8A5634', .45); x.fillRect(0, y0, w, pw);
+    const gc = mix(B.wood, B.grain, .55);
+    for (let j = 0; j < 9; j++) {
+      const yy = y0 + pw * (.08 + .84 * R()), pts = [];
+      for (let xx = -40; xx < w + 80; xx += 160) pts.push([xx, yy + Math.sin(xx / (300 + 200 * R()) + j) * (4 + 6 * R())]);
+      line(x, pts, gc, 1.4 + R() * 1.6);
+    }
+    const kx = w * R(), ky = y0 + pw * (.3 + .4 * R());
+    for (let r = 3; r > 0; r--) { x.strokeStyle = gc; x.lineWidth = 2; x.beginPath(); x.ellipse(kx, ky, 18 * r + 6, 6 * r + 3, 0, 0, TAU); x.stroke(); }
+    x.fillStyle = B.grain; x.fillRect(0, y0 - 3, w, 6);
+    x.fillStyle = mix(B.wood, '#C08A55', .45); x.fillRect(0, y0 + 3, w, 3);
+  }
+  const [hx, hy] = toP(-0.08, -0.06);
+  airbrush(x, hx, hy, 0.75 * KP, 0.5 * KP, B.woodHalo, .8, .95);
+  const gr = x.createRadialGradient(hx, hy, 0.3 * KP, hx, hy, 1.0 * KP);
+  gr.addColorStop(0, rgba(B.woodDark, 0)); gr.addColorStop(1, rgba(B.woodDark, .85)); x.fillStyle = gr; x.fillRect(0, 0, w, h);
+  const fl = C('flour').f;
+  for (let i = 0; i < 1100; i++) {
+    const [px, py] = toP(-0.42 + R() * 0.84, -0.12 + Math.pow(R(), 1.3) * 0.3);
+    x.fillStyle = rgba(fl, .45 + .55 * R()); x.beginPath(); x.arc(px, py, 1.2 + 2.6 * R(), 0, TAU); x.fill();
+  }
+  return c;
+}
+function wallTex() {
+  const [c, x] = canvas(1200, 450), B = BG.warm;
+  vgrad(x, 0, 0, 1200, 450, [[0, B.wallFar], [1, mix(B.wallNear, B.wallFar, .35)]]);
+  airbrush(x, 420, 330, 600, 240, B.wallNear, .5, .9);
+  x.fillStyle = B.woodDark; x.fillRect(0, 442, 1200, 8);
+  return c;
+}
+
+// —— 面：一层 = 圆头长条截面（进深 DD、厚 LT）沿 X 挤出 len；叠 5 层，奇偶层前后错开一点（折叠的折口）——
+function slabGeo(len) {
+  const r = LT / 2, a = DD / 2 - r, s = new THREE.Shape();
+  s.moveTo(-a, -r); s.lineTo(a, -r); s.absarc(a, 0, r, -Math.PI / 2, Math.PI / 2, false); s.lineTo(-a, r); s.absarc(-a, 0, r, Math.PI / 2, Math.PI * 1.5, false);
+  const g = new THREE.ExtrudeGeometry(s, { depth: len, bevelEnabled: true, bevelThickness: .0008, bevelSize: .0005, bevelSegments: 2, curveSegments: 6 });
+  g.rotateY(Math.PI / 2);                                    // 挤出方向 → +X
+  return g;
+}
+function stack(geo, mat) {
+  const gr = new THREE.Group();
+  for (let j = 0; j < LAY; j++) { const m = new THREE.Mesh(geo, mat); m.position.set(0, LT / 2 + j * LT * .96, (j % 2 ? 1 : -1) * .0022); m.castShadow = m.receiveShadow = true; gr.add(m); }
+  return gr;
+}
+
+// —— 切面刀：长方形薄刃（刃沿 Z），截面带 V 形刃口；刀背后端（近侧）一截铁颈 + 铁箍 + 木柄往师傅那边上翘。原点 = 刃口中点 ——
+function knifeMesh() {
+  const ck = C('knife'), g = new THREE.Group(), T = KB.T, s = new THREE.Shape();
+  s.moveTo(-T / 2, .009); s.lineTo(0, 0); s.lineTo(T / 2, .009); s.lineTo(T / 2, KB.H); s.lineTo(-T / 2, KB.H); s.closePath();
+  const bg = new THREE.ExtrudeGeometry(s, { depth: KB.L, bevelEnabled: false }); bg.translate(0, 0, -KB.L / 2);
+  const blade = new THREE.Mesh(bg, toon(ck, { t: .05, hi: .7 })); blade.castShadow = blade.receiveShadow = true; g.add(blade);
+  const deco = (pts, col) => {                              // 贴在刀面（-X 面）上的硬边色块
+    const sh = new THREE.Shape(pts.map(([z, y]) => new THREE.Vector2(z, y))), m = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({ color: col }));
+    m.rotation.y = -Math.PI / 2; m.position.x = -T / 2 - .0004; m.material.userData.outlineParameters = { visible: false }; g.add(m); return m;
   };
-  const F = [fold(.66, -1, 1.22, .05, .16), fold(1.3, 1, 2.0, .07, .2), fold(2.25, -1, 2.95, .1, .18)], T = [.9, 1.4, 2.0, 2.7, 3.5, 4.4], E = 5.4;
-  return part('sleeve', [P(.56, -.47, 1), P(.56, .47, 1), ...T.map(t => P(t, hw(t, 1))), P(E, hw(E, 1), 1), P(E, -hw(E, -1), 1), ...T.slice().reverse().map(t => P(t, -hw(t, -1)))], {
-    sh: F.map(f => f[0]), ln: F.map(f => f[1]) });
-}
-const at = (p, k) => k ? [...p, 1] : p;
-
-// 左手护手（爪形）：从拇指一侧、略高处看。四指各干各的：近节从掌指骨节斜向下伸到刀面（食指最平、小指最陡，角度一根比一根大），
-// 第二指节（PIP）贴着刀面、沿刀面往右上一根比一根远（间距不等）；中节往回折、末节收在指节后面按住面块（折得一根比一根深）；
-// 拇指在近侧、比指尖再靠后，指腹按住面块。锚点 = 食指第二指节；腕往左下，前臂从左下角带弧度出画（压在右臂后面）。
-function claw() {
-  // [掌指骨节, 三节角度°, 三节长, 粗细]（小 → 食）
-  const D = [[[.144, -.401], [47, 141, 176], [.20, .13, .10], FWK.l], [[-.002, -.344], [40, 129, 162], [.27, .17, .13], FWK.r],
-    [[-.146, -.262], [35, 120, 151], [.30, .19, .14], FWK.m], [[-.245, -.136], [29, 111, 139], [.28, .18, .14], FWK.i]];
-  const F = D.map(([b, an, ls, k], i) => digit(b, an, ls, { w: FW * k, back: true, id: 40 + i }));
-  const palm = part('skin', ['W', [-.30, -.05], [-.22, -.19], [-.12, -.29], [.00, -.37], [.13, -.44], [.05, -.51], [-.16, -.54], [-.42, -.52], [-.64, -.44, 1], [-.53, .17, 1], [-.43, .12], [-.36, .03]], {
-    sh: [[[-.58, -.22], [-.32, -.30], [-.08, -.40], [-.12, -.34], [-.34, -.24]]],   // 掌背上一道骨节下的硬边影（手背往下折到指根）
-    cal: [[[-.42, .09], [-.32, .01], [-.28, .06], [-.36, .12]]] });                   // 虎口老茧露出一角
-  const thumb = digit([-.50, .07], [26, 6], [.24, .18], { w: .28, back: true, nail: true, id: 45 });
-  const W = [-.60, -.14];
-  return { arm: { w: W, a: 165, ww: .72 }, parts: [sleeve(W, 165, -.035), ...F[0], ...F[1], ...F[2], palm, ...F[3], ...thumb] };
-}
-// 右手握刀柄：掌心朝镜头，前臂从左下角进来。刀柄斜穿过拳心（右下是刀身、左上是柄尾）；四指从柄的远侧绕过来扣在近侧：
-// 每根只露中节 + 末节（指背 + 短指甲），PIP 骨节在拳的外缘（右上）排成一道弧 —— 中指最外、小指最里；中节横过刀柄往掌根走，
-// 末节往刀身一侧勾、指尖收进掌里；四根粗细、长短、角度都不一样，相邻的互相压一点边。拇指从刀身一侧的大鱼际出来，
-// 斜着压过食指、中指的末节（拇指尖顶到中指）。锚点 = 拳心里的刀柄轴。H(a, b)：a 沿柄往刀身，b 往拳的外缘（右上）
-const H = (a, b, k) => at([a * .5 + b * .866, a * .866 - b * .5], k);
-function knifeGrip() {
-  const F = [[-.34, .14, [162, 128], [.13, .10], FWK.l], [-.15, .21, [154, 117], [.17, .12], FWK.r],
-    [.06, .245, [147, 108], [.185, .13], FWK.m], [.265, .19, [141, 100], [.165, .12], FWK.i]]
-    .flatMap(([a, b, an, ls, k], i) => digit(H(a, b), an, ls, { w: FW * k, back: true, nail: true, id: 50 + i }));
-  const palm = part('skin', ['W', H(-.30, .26), H(-.47, .16), H(-.52, -.04), H(-.47, -.27), H(-.33, -.50, 1), H(.28, -.55, 1), H(.47, -.38), H(.56, -.14), H(.53, .10), H(.40, .24), H(.06, .30)], {
-    ln: [[H(-.36, -.30), H(-.08, -.22), H(.22, -.30)]],                       // 掌根一道横纹
-    cal: [[H(.36, -.06), H(.50, -.04), H(.50, -.20), H(.40, -.18)]] });        // 大鱼际上一块老茧（握刀磨出来的）
-  const thumb = digit(H(.44, -.22), [-74, -104], [.25, .21], { w: .27, nail: true, back: true, id: 55 });
-  const W = H(-.03, -.53);
-  return { arm: { w: W, a: 115, ww: .8 }, parts: [sleeve(W, 115, -.03), palm, ...F, ...thumb] };
-}
-// 捏面：从拇指一侧看，拇指和食指、中指三个指尖捏在一起（锚点 = 捏点），无名指、小指松松地蜷进掌里（各蜷各的）；
-// open > 0 = 将要捏上（指尖张开一点）。手在捏点下方，前臂往下、往外带弧度出画（师傅在近侧）
-function pinch(open = 0) {
-  return () => {
-    const lit = digit([.21, .58], [4, 96, 172], [.12, .09, .07], { w: FW * FWK.l, back: true, id: 64 });
-    const ring = digit([.25, .43], [-12, 82, 164], [.15, .11, .08], { w: FW * FWK.r, back: true, id: 65 });
-    const palm = part('skin', ['W', [-.44, .26], [-.30, .22], [-.08, .30], [.14, .42], [.24, .66], [.25, 1.0, 1], [-.36, 1.02, 1], [-.48, .66]], {
-      cal: [[[-.15, .25], [.09, .36], [.07, .47], [-.05, .43], [-.17, .35]]] });
-    const middle = digit([-.20, .33], [-78 + 6 * open, -36 + 10 * open, 18 + 8 * open], [.30, .20, .16], { w: FW * FWK.m, back: true, id: 61 });
-    const index = digit([-.34, .30], [-88 + 4 * open, -50 + 12 * open, 4 + 14 * open], [.28, .19, .16], { back: true, cal: 1, id: 62 });
-    const thumb = digit([.10, .80], [-78, -100 - 10 * open, -122 - 14 * open], [.27, .22, .19], { w: .27, nail: true, id: 63 });
-    const W = [-.06, 1.0];
-    return { off: [-.06, .02], arm: { w: W, a: 96 }, parts: [sleeve(W, 96, .03), ...lit, ...ring, palm, ...middle, ...index, ...thumb] };
-  };
-}
-const CLAW = claw, KGRIP = knifeGrip, PINCH = [pinch(.8), pinch(0), pinch(0)];
-
-const BY0 = 600, BY1 = 690, DEP = [55, -46];          // 面块正面上沿 / 下沿；面块进深在画面上的位移
-const LX = 150, RX = 1780, KX0 = 1100, NW = 30;        // 面块左端（叠口）/ 右端；第一刀位置；每根面宽
-const EDGE = '#F2E4C8', HI = '#FFF4DC';
-const P0 = [-240, -40], PW = 2400, PH = 1160, PK = 1.5;  // 背景板（按 150% 分辨率画一次）
-const E = [965, 600], PAN = 120;                        // 推镜锚点（刀刃落在面块上的位置）
-
-// 镜头：screen = Z·(p − F) + Fs
-function cam(lt) {
-  if (lt < 1.5) return { Z: 1, tx: PAN * lt / 1.5, ty: 0 };
-  const u = lt < 2.25 ? (lt - 1.5) / .75 : (lt - 2.25) / .75;
-  const Z = lt < 2.25 ? 1 + .5 * u * u : 1.5 - .5 * (1 - (1 - u) * (1 - u));
-  return { Z, tx: E[0] + PAN - Z * E[0], ty: E[1] - Z * E[1] };
+  const Lh = KB.L / 2;
+  g.userData.edge = deco([[-Lh + .004, .0035], [Lh - .004, .0035], [Lh - .004, .0085], [-Lh + .004, .0085]], HI);            // 刃口一道硬高光
+  deco([[-.03, .07], [.035, .02], [.075, .02], [.01, .07]], mix(ck.f, HI, .55));                                              // 刀面一道斜的硬高光
+  const wood = toon(C('pin'), { t: .05, hi: .9 }), iron = toon(ck, { t: .05 });
+  // 铁颈接在刀身后端、顶面和刀背齐平，铁箍 + 木柄从这里往师傅那边上翘：整条刀背空出来给食指压（第 5 版：原来铁颈、铁箍骑在刀背上，食指放不平）
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(T * 2.2, .02, .024), iron); neck.position.set(0, KB.H - .011, Lh + .004); g.add(neck);
+  const base = V3(0, KB.H - .012, Lh + .012), q = new THREE.Quaternion().setFromUnitVectors(V3(0, 1, 0), HW);
+  const fe = new THREE.Mesh(new THREE.CylinderGeometry(.0145, .0145, .018, 24), iron); fe.position.copy(base).addScaledVector(HW, .009); fe.quaternion.copy(q); g.add(fe);
+  const hd = new THREE.Mesh(new THREE.CylinderGeometry(.0125, .0135, HL, 24), wood); hd.position.copy(base).addScaledVector(HW, .018 + HL / 2); hd.quaternion.copy(q); g.add(hd);
+  for (const m of [neck, fe, hd]) m.castShadow = m.receiveShadow = true;
+  g.userData.base = base;
+  return g;
 }
 
-let PLATE = null;
-function plate() {
-  if (PLATE) return PLATE;
-  const [c, x] = canvas(PW * PK, PH * PK), B = BG.warm, R = rng(606);
-  x.scale(PK, PK); x.translate(-P0[0], -P0[1]);
-  vgrad(x, P0[0], P0[1], PW, 380, [[0, B.wallFar], [1, mix(B.wallNear, B.wallFar, .35)]]);   // 墙：喷枪渐变
-  airbrush(x, 300, 120, 900, 380, B.wallNear, .55, .9);
-  x.fillStyle = B.wood; x.fillRect(P0[0], 330, PW, PH);
-  let y = 330, sp = 34, i = 0;                                     // 台面：横向木板，越近越宽
-  while (y < P0[1] + PH) {
-    x.fillStyle = mix(B.wood, i % 2 ? '#6A3C20' : '#8A5634', .4); x.fillRect(P0[0], y, PW, sp);
-    const gc = mix(B.wood, B.grain, .5);
-    for (let j = 0; j < 4; j++) { const yy = y + sp * (.15 + .7 * R()), pts = []; for (let xx = P0[0]; xx < P0[0] + PW + 100; xx += 120) pts.push([xx, yy + Math.sin(xx / 260 + j * 2) * sp * .06]); line(x, pts, gc, 1 + sp / 80); }
-    x.fillStyle = B.grain; x.fillRect(P0[0], y - 1.5, PW, 3);
-    y += sp; sp *= 1.32; i++;
+// —— 生面条一把：8 根有宽有厚的扁条（宽 7 mm、厚 2 mm），从捏点出来按扇形张开、往下垂，边垂边扭（宽面转过去时明暗跟着换）——
+function bundleGeo(P, fan, amp, ph, seed, yMin) {
+  const R = rng(seed), pos = [], idx = [], N = 22;
+  for (let i = 0; i < 8; i++) {
+    const a = (i - 3.5) / 3.5 * fan + (R() - .5) * .08, L = .14 + R() * .05, p0 = R() * TAU, zj = (R() - .5) * .25, tw = (R() - .5) * 2.4;
+    const C0 = [];
+    for (let k = 0; k <= N; k++) {
+      const u = k / N, sx = Math.sin(a) * L * .55 * (1 - Math.exp(-3 * u)) + amp * u * Math.sin(u * 7 + p0 + ph);
+      C0.push(V3(P.x + sx + (i - 3.5) * .002, Math.max(yMin, P.y - L * u * Math.cos(a * .6)), P.z + zj * L * u * .4 + amp * .5 * u * Math.cos(u * 5 + p0 + ph)));
+    }
+    for (let k = 0; k <= N; k++) {
+      const T = C0[Math.min(N, k + 1)].clone().sub(C0[Math.max(0, k - 1)]).normalize(), th = tw * k / N + (i % 2) * .5;
+      let B = new THREE.Vector3().crossVectors(T, V3(0, 0, 1)).normalize(); const Nn = new THREE.Vector3().crossVectors(B, T);
+      B = B.clone().multiplyScalar(Math.cos(th)).addScaledVector(Nn, Math.sin(th)); const Nm = new THREE.Vector3().crossVectors(B, T);
+      const w = .0035 * (k === 0 ? .6 : 1), t = .001, c = C0[k];
+      const cs = [[w, t], [-w, t], [-w, -t], [w, -t]].map(([u, v]) => c.clone().addScaledVector(B, u).addScaledVector(Nm, v));
+      for (let f = 0; f < 4; f++) { const a0 = cs[f], b0 = cs[(f + 1) % 4]; pos.push(a0.x, a0.y, a0.z, b0.x, b0.y, b0.z); }
+    }
+    const base = i * (N + 1) * 8;
+    for (let k = 0; k < N; k++) for (let f = 0; f < 4; f++) {
+      const a0 = base + k * 8 + f * 2, b0 = a0 + 8;
+      idx.push(a0, b0, a0 + 1, a0 + 1, b0, b0 + 1);
+    }
   }
-  x.fillStyle = B.woodDark; x.fillRect(P0[0], 326, PW, 6);         // 台面后沿与墙的交线
-  airbrush(x, 820, 640, 1100, 380, B.woodHalo, .75, .95);          // 吊灯光圈
-  const gr = x.createRadialGradient(820, 600, 300, 820, 600, 1500);
-  gr.addColorStop(0, rgba(B.woodDark, 0)); gr.addColorStop(1, rgba(B.woodDark, .8)); x.fillStyle = gr; x.fillRect(P0[0], P0[1], PW, PH);
-  const fl = C('flour').f;                                           // 撒粉
-  for (let k = 0; k < 700; k++) { x.fillStyle = rgba(fl, .4 + .6 * R()); x.beginPath(); x.arc(200 + R() * 1700, 560 + Math.pow(R(), 1.5) * 260, 1 + 2.5 * R(), 0, TAU); x.fill(); }
-  return (PLATE = c);
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  return geo;
 }
 
-// 面块的一段（xa → xb）：顶面平行四边形 + 正面 + 叠层线；left = 左端画叠口圆头
-function block(g, xa, xb, lw, left) {
-  const cd = C('dough'), top = poly([[xa, BY0], [xb, BY0], [xb + DEP[0], BY0 + DEP[1]], [xa + DEP[0], BY0 + DEP[1]]]);
-  const front = poly([[xa, BY0], [xb, BY0], [xb, BY1], [xa, BY1]]);
-  g.fillStyle = rgba(BG.warm.woodDark, .55); g.fillRect(xa + 6, BY1 - 4, xb - xa, 12);          // 贴台面的影
-  cel(g, top, { f: EDGE, l: cd.l, lw });
-  cel(g, front, { f: cd.f, s: cd.s, sh: [[[xa, BY1 - 16, 1], [xb, BY1 - 16, 1], [xb, BY1, 1], [xa, BY1, 1]]], l: cd.l, lw });
-  for (const yy of [BY0 + 23, BY0 + 46, BY0 + 68]) line(g, [[xa + 4, yy], [xb, yy]], cd.s, 2 * lw / 2);
-  if (left) {
-    const cap = path([[xa + 6, BY0 + DEP[1], 1], [xa - 26, BY0 + DEP[1] * .4], [xa - 30, (BY0 + BY1) / 2], [xa - 20, BY1 - 6], [xa + 6, BY1, 1]], true);
-    cel(g, cap, { f: cd.f, s: cd.s, so: [10, -10], l: cd.l, lw });
-  }
+// —— 手框朝向：Y = 手背朝向、Z = 往手腕的方向（世界坐标），X = Y × Z（hand3d 的手框约定）——
+function orient(o, Y, Z) {
+  const z = Z.clone().normalize(), y = Y.clone().addScaledVector(z, -Y.dot(z)).normalize(), x = new THREE.Vector3().crossVectors(y, z);
+  o.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
 }
-function cuts(g, xa, xb, lw) {                                         // 切口：一条硬边阴影线（正面竖线 + 顶面沿进深的斜线）
-  const cd = C('dough');
-  for (let x = xa; x < xb - 4; x += NW) {
-    g.fillStyle = cd.s; g.fill(poly([[x, BY0 + DEP[1]], [x, BY1], [x + 3, BY1], [x + 3, BY0], [x + 3 + DEP[0], BY0 + DEP[1]]].map(p => p)));
-    g.fillStyle = HI; g.fillRect(x + 4, BY0 + 2, 2, BY1 - BY0 - 20);
-  }
+const wp = (H, n) => { const v = new THREE.Vector3(); H.root.updateMatrixWorld(true); H.B[n].getWorldPosition(v); return v; };
+// 两向对齐：把手框里的方向 d（主）、n（副）转到世界里的 D、N
+function align(o, d, n, D, N) {
+  const B = (a, b) => { const x = a.clone().normalize(), z = new THREE.Vector3().crossVectors(x, b).normalize(); return new THREE.Matrix4().makeBasis(x, new THREE.Vector3().crossVectors(z, x), z); };
+  o.quaternion.setFromRotationMatrix(B(D, N).multiply(B(d, n).transpose()));
+}
+// 右手握刀（食指压刀背）：在刀的局部系里摆——食指方向 → 刀身 -Z 略往下压、手背朝右上；食指末节关节压在刀背顶上（刀背 y = KB.H）。
+//   中指、无名指、小指包住木柄，拇指捏在刀面左侧（-X）。刀怎么转，手跟着转（放刀时用）
+function gripKnife(H, K) {
+  H.pose(POSE.grip); H.root.position.set(0, 0, 0); H.root.quaternion.identity();
+  const i0 = wp(H, 'index-finger-phalanx-proximal'), i1 = wp(H, 'index-finger-tip');
+  align(H.root, i1.sub(i0), V3(0, 1, 0), V3(-.03, -.05, -1), V3(.68, .73, 0));
+  K.updateMatrixWorld(true); H.root.quaternion.premultiply(K.quaternion);
+  const dip = wp(H, 'index-finger-phalanx-distal');
+  H.root.position.copy(V3(.001, KB.H + .0085, .07).applyMatrix4(K.matrixWorld)).sub(dip);
+}
+// 放刀：三张（lt 2.25 / 2.333 / 2.417，两拍一张）[x（null = 接最后一刀的位置往右）, y, z, 绕 Y, 绕 Z]：抬着往右移 → 侧过来 → 平放在右边台面（左面朝下）
+const PUT = [[null, .09, -.004, .04, .45], [.24, .05, .012, .14, 1.05], [BX1 + .12, .0022, .03, .25, Math.PI / 2 - .1]];
+const TR = 2.5, TP = 2.5 + 1 / 6;                            // 右手松手、捏起第二把面
+
+// —— 师傅的两个肩（reachArm 用，世界坐标）：两肩相距 0.40，按 [lt, 两肩中点 x, y, z, 两肩连线绕 Y 转的角（°，正 = 右肩往后）] 分段线性插值。
+//    机位差不多就在师傅头的位置往下看，所以切的时候两肩连线和机位的「右」方向平行（转 24°），肩高 0.35、压在画框下沿两角之外，
+//    胳膊从下方两角进来；切的时候身体跟着刀往左挪 4 cm；放刀、捏面时直起一点、往右挪到两把面中间，转正到 10°。手离肩 0.40–0.54 m（够得着 0.594），肘一直有弯
+const BODY = [[0, -.159, .35, .495, 24], [1.5, -.199, .35, .495, 24], [2.25, -.199, .35, .495, 24], [2.75, .08, .38, .56, 10], [3, .08, .38, .56, 10]];
+function shoulders(lt) {
+  let i = 0; while (i < BODY.length - 2 && lt >= BODY[i + 1][0]) i++;
+  const [t0, ...a] = BODY[i], [t1, ...b] = BODY[i + 1], u = Math.min(1, Math.max(0, (lt - t0) / (t1 - t0)));
+  const [x, y, z, yaw] = a.map((v, k) => v + (b[k] - v) * u), c = V3(x, y, z), r = V3(Math.cos(yaw * D2R), 0, Math.sin(yaw * D2R)).multiplyScalar(.2);
+  return { L: c.clone().sub(r).toArray(), R: c.clone().add(r).toArray() };
 }
 
-// 切面刀：长方形薄刃（刃沿进深方向，刀面朝机位），木柄从刀背后端（近侧）斜着翘起来、伸向师傅；h = 抬起高度
-// 返回 [握点（拳心里的刀柄轴）, 刀柄方向]：右手握在这里
-const KH = [-.5, -.866];                                                  // 刀柄在画面上的方向：往左上翘（近侧 + 抬高）
-function knife(g, e, x, h, lw) {
-  const ck = C('knife'), cp = C('pin'), y0 = 692 - h, BH = 210, u = [.767, -.641], L = 360;
-  const Ef = [x, y0], Eb = [x + u[0] * L, y0 + u[1] * L], Sb = [Eb[0], Eb[1] - BH], Sf = [x, y0 - BH];
-  const r0 = [Sf[0] + 4, Sf[1] + 14], r1 = [r0[0] + KH[0] * 235, r0[1] + KH[1] * 235];
-  g.lineCap = 'round'; g.strokeStyle = cp.l; g.lineWidth = 40; g.beginPath(); g.moveTo(...r0); g.lineTo(...r1); g.stroke();   // 木柄
-  g.strokeStyle = cp.f; g.lineWidth = 40 - 2 * lw; g.stroke();
-  g.strokeStyle = cp.s; g.lineWidth = 9; g.beginPath(); g.moveTo(r0[0] + 9, r0[1] + 2); g.lineTo(r1[0] + 9, r1[1] + 2); g.stroke();
-  g.strokeStyle = cp.h; g.lineWidth = 5; g.beginPath(); g.moveTo(r0[0] - 8, r0[1] - 6); g.lineTo(r1[0] - 6, r1[1] + 4); g.stroke();
-  const face = poly([Ef, Eb, Sb, Sf]);
-  cel(g, face, { f: ck.f, s: ck.s, sh: [[[Sf[0], Sf[1], 1], [Sb[0], Sb[1], 1], [Sb[0], Sb[1] + 46, 1], [Sf[0], Sf[1] + 32, 1]]], l: ck.l, lw });
-  const glint = poly([[Ef[0], Ef[1] - 4], [Eb[0], Eb[1] - 4], [Eb[0], Eb[1] - 16], [Ef[0], Ef[1] - 16]]);   // 刃口硬高光
-  g.fillStyle = HI; g.fill(glint);
-  g.fillStyle = mix(ck.f, HI, .55); g.fill(poly([[x + 70, Sf[1] + 70], [x + 112, Sf[1] + 36], [x + 220, Sf[1] - 40], [x + 178, Sf[1] - 6]]));
-  g.fillStyle = mix(ck.f, '#FFFFFF', .25); g.fill(poly([Sf, Sb, [Sb[0] + 7, Sb[1] - 6], [Sf[0] + 7, Sf[1] - 6]]));   // 刀背顶面
-  cel(g, poly([[r0[0] - 16, r0[1] + 8], [r0[0] + 16, r0[1] - 6], [r0[0] + 16 + KH[0] * 26, r0[1] - 6 + KH[1] * 26], [r0[0] - 16 + KH[0] * 26, r0[1] + 8 + KH[1] * 26]]), { f: ck.s, l: ck.l, lw });   // 铁箍
-  e.fillStyle = '#8A7458'; e.fill(glint);                                                          // 刃口高光进发光板（推近时一道亮线）
-  return [r0[0] + KH[0] * 166, r0[1] + KH[1] * 166];
+// 手型（度）：[张开, 掌指关节弯, 中节弯, 末节弯]；拇指 [指根张开, 指根弯, 第二节弯, 末节弯]
+const POSE = {
+  grip: { thumb: [-24, 30, 30, 20], index: [-8, -22, 3, 2], middle: [-30, 80, 85, 40], ring: [-40, 78, 80, 36], pinky: [-50, 85, 90, 45] },   // 三指包柄（往小指侧张 30–50°：弯过去的中节、末节斜着绕到木柄下面、从机位那侧露出来）、食指压刀背、拇指收短贴在刀面后端
+  claw: { thumb: [-26, 36, 26, 16], index: [20, 34, 88, 52], middle: [4, 20, 72, 36], ring: [-14, 12, 72, 36], pinky: [-28, 6, 78, 40] },   // 猫爪护手：掌指关节弯 + 中节弯 ≈ 90°（中节竖直），指尖收在下面，指间分开；拇指收在后面。第 6 版：四指张得更开；无名指、小指掌指关节少弯（指节往前够到刀面附近），食指多收（手横滚后指尖不扎进面）
+  open: { thumb: [4, 8, 8, 6], index: [4, 16, 20, 10], middle: [1, 17, 22, 12], ring: [-4, 20, 26, 13], pinky: [-9, 24, 30, 14] },   // 松手：放下刀，五指自然微弯（接近 POSES3D.relaxed，食指不翘）
+  pinch: { thumb: [28, 30, 22, 14], index: [10, 46, 34, 14], middle: [2, 52, 38, 16], ring: [-6, 74, 80, 42], pinky: [-12, 78, 78, 42] },   // 拇指和食指、中指捏住
+};
+
+let S = null;
+function setup() {
+  if (S) return S;
+  const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(36, 16 / 9, 0.03, 20), an = renderer().r.capabilities.getMaxAnisotropy();
+  const bt = new THREE.CanvasTexture(boardTex()); bt.anisotropy = an;
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(PWm, PDm), new THREE.MeshBasicMaterial({ map: bt }));
+  board.rotation.x = -Math.PI / 2; board.position.set(PX0 + PWm / 2, 0, PZ0 + PDm / 2);
+  const shade = new THREE.Mesh(new THREE.PlaneGeometry(PWm, PDm), new THREE.ShadowMaterial({ color: new THREE.Color(BG.warm.woodDark), opacity: .55 }));
+  shade.rotation.x = -Math.PI / 2; shade.position.set(board.position.x, 0.0004, board.position.z); shade.receiveShadow = true;
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(PWm, 0.9), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(wallTex()) }));
+  wall.position.set(board.position.x, 0.45, PZ0);
+  for (const m of [board, shade, wall]) { m.userData.bg = true; m.material.userData.outlineParameters = { visible: false }; scene.add(m); }
+  const dm = toon(C('dough'), { t: .1 }), nm = toon(C('dough'), { t: -.12 }), gS = slabGeo(NW - .0018);
+  const slices = Array.from({ length: 30 }, () => { const s = stack(gS, dm); scene.add(s); return s; });
+  const block = new THREE.Group(); scene.add(block);
+  const knife = knifeMesh(); scene.add(knife);
+  const hands = { L: makeHand('L'), R: makeHand('R') };
+  for (const k of ['L', 'R']) scene.add(hands[k].root, hands[k].arm);
+  const bun = [0, 1].map(() => { const m = new THREE.Mesh(new THREE.BufferGeometry(), nm); m.castShadow = m.receiveShadow = true; scene.add(m); return m; });
+  sun(scene, [-0.65, 1.0, 0.05], 0.6, [0.03, 0.05, 0]);
+  return (S = { scene, cam, dm, slices, block, bcache: {}, knife, hands, bun });
+}
+function setBlock(s, x0, x1) {                               // 没切的那一截：x0 → x1
+  const key = (x1 - x0).toFixed(4);
+  if (s.block.userData.key !== key) {
+    s.block.clear(); s.bcache[key] ??= slabGeo(x1 - x0);
+    s.block.add(stack(s.bcache[key], s.dm)); s.block.userData.key = key;
+  }
+  s.block.position.set(x0, 0, 0);
 }
 
-// 生面条一把：从拳里垂下（§4.4：每根 18 px，垂长 380–520，扇形张角按张数变）
-function bundle(g, x, y, fan, amp, seed, lw, lt) {
-  const cd = C('dough'), R = rng(seed), list = [];
-  for (let i = 0; i < 8; i++) list.push({ a: Math.PI / 2 + (i - 3.5) / 3.5 * fan + (R() - .5) * .06, L: 380 + R() * 140, ph: R() * TAU, back: i % 2 });
-  for (const q of list.sort((a, b) => b.back - a.back)) {
-    const sp = flutter(x + (q.a - Math.PI / 2) * 40, y, q.a, q.L, 14, amp, 1.6, q.ph + lt * 0);
-    const rib = ribbon(sp, k => 18 * (1 - .15 * k));
-    cel(g, rib, { f: q.back ? mix(cd.f, cd.s, .45) : cd.f, l: cd.l, lw: lw * .8 });
-    line(g, sp.slice(1, -1).map(p => [p[0] - 5, p[1]]), C('flour').f, 2);
+// —— 切：第 n 刀在 lt = n·0.375 落到台面（拍上）；k = 这一刀里的第几张（3-2-2-2）——
+const KHT = [0, .042, .03, .012];
+function cutState(lt) {
+  const n = Math.min(5, Math.floor(lt / .375 + 1e-6)), f = Math.floor((lt - n * .375) * 24 + 1e-6), k = f < 3 ? 0 : f < 5 ? 1 : f < 7 ? 2 : 3;
+  const cx = KX0 - NW * n, last = n === 5 && k > 0;
+  return { n, k, cx, kx: k === 0 || last ? cx : cx - NW, h: last ? .045 + .02 * k : KHT[k] };
+}
+
+function camera(s, lt) {
+  const az = -24 * D2R, el = 38 * D2R, d = 0.8, dir = V3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
+  const px = KX0 - 0.015 - NW * Math.min(lt, 2.25) / .375;
+  let tg = V3(px, 0.035, 0.01), cp = tg.clone().addScaledVector(dir, d);
+  if (lt >= 1.5) {
+    const u = Math.min(1, (lt - 1.5) / .75), Z = lt < 2.25 ? 1 + .5 * u * u : 1.5 - .5 * ease((lt - 2.25) / .75);
+    const A = V3(cutState(Math.min(lt, 2.2)).kx - .004, .012, .045);
+    if (lt >= 2.25) {                                          // 拉回：取景从刀刃移到两把面条
+      const v = ease((lt - 2.25) / .75), aN = -4 * D2R, eN = 44 * D2R, dN = V3(Math.sin(aN) * Math.cos(eN), Math.sin(eN), Math.cos(aN) * Math.cos(eN));
+      const tN = V3(KX0 - 5 * NW + .095, .14, .03), cN = tN.clone().addScaledVector(dN, .8);
+      tg.lerp(tN, v); cp.lerp(cN, v);
+    }
+    cp = A.clone().add(cp.clone().sub(A).divideScalar(Z)); tg = A.clone().add(tg.clone().sub(A).divideScalar(Z));
   }
+  s.cam.position.copy(cp); s.cam.lookAt(tg);
 }
 
 export function draw(g, e, lt, A, t) {
-  const { Z, tx, ty } = cam(lt), lw = 2 / Z, tc = Math.floor(lt * 12 + 1e-6) / 12;
-  for (const x of [g, e]) x.setTransform(Z, 0, 0, Z, tx, ty);
-  g.drawImage(plate(), P0[0], P0[1], PW, PH);
-  if (lt < 2.25) {
-    const f = Math.floor((lt % .375) * 24 + 1e-6), n = Math.min(5, Math.floor(lt / .375)), cx = KX0 - NW * n;
-    const last = n === 5 && f >= 3, kx = f < 3 ? cx : cx - NW, kh = last ? 180 + (f - 3) * 40 : [0, 0, 0, 110, 110, 70, 70, 25, 25][f];
-    block(g, cx, RX, lw, false); cuts(g, cx, RX, lw);
-    const hb = knife(g, e, kx, kh, lw);
-    block(g, LX, cx, lw, true);
-    const lh = f < 3 ? 0 : -5;                                                                       // 护手：第二指节贴着刀面，随刀退一根面宽
-    hand(g, null, { x: kx + 14, y: 556 + lh, s: 230, rot: 0, side: 'R', pose: CLAW, light: 'warm', arm: .04, lw });   // 左臂在后
-    hand(g, null, { x: hb[0], y: hb[1], s: 220, rot: 0, side: 'R', pose: KGRIP, light: 'warm', arm: .04, lw });         // 右手握柄，右臂离镜头近、压在前面
+  const s = setup(), { L: HLh, R: HRh } = s.hands, cutting = lt < 2.25;
+  const cs = cutState(Math.min(lt, 2.2499)), nk = Math.min(2, Math.floor((lt - 2.25) / .25 + 1e-6));
+  const cx = cs.cx, SH = shoulders(lt);
+  setBlock(s, BX0, cx);
+  const nS = Math.round((BX1 - cx) / NW);
+  s.slices.forEach((sl, i) => {
+    sl.visible = i < nS && (cutting || i >= 20 || (i >= 10 && lt < TP));   // 第二把面等右手放完刀再捏起
+    const fresh = i === 0 && cs.k === 0 && cutting;
+    sl.position.set(cx + i * NW + .0009 + (fresh ? KB.T * .6 : 0), 0, (hash(i * 3.7) - .5) * .003);
+    sl.rotation.set(0, (hash(i * 1.3) - .5) * .03, fresh ? -.07 : (hash(i * 5.1) - .5) * .05);
+  });
+  const K = s.knife;
+  if (cutting) {
+    K.position.set(cs.kx - KB.T / 2, cs.h, KB.z); K.rotation.set(0, 0, 0);
+    K.updateMatrixWorld(true);
+    gripKnife(HRh, K); HRh.reachArm(SH.R);
+    // 左手护手：指尖收进去按在面块顶上，第二指节贴着刀面（-X 面）；拇指在近侧；随刀往左退
+    // 第 6 版：手背往机位那边横滚（拇指侧低、小指侧高）、手腕往外偏一点（小指侧靠近刀），指节一排斜着对镜头、错开成台阶，四根手指都分得清
+    HLh.pose(POSE.claw); orient(HLh.root, V3(0.2, 1, 0.45), V3(-0.95, 0.12, -0.07));
+    HLh.root.position.set(0, .05, .0);
+    const pip = ['index', 'middle', 'ring'].map(f => wp(HLh, `${f}-finger-phalanx-intermediate`)), tip = wp(HLh, 'middle-finger-tip');
+    const mx = Math.max(...pip.map(p => p.x));
+    HLh.root.position.set(cs.kx - KB.T - .009 - mx, .05 + (TOP + .006 - tip.y), -.004 - pip[1].z * 0);
+    HLh.reachArm(SH.L);
+    for (const b of s.bun) b.visible = false;
   } else {
-    // 刀已放下（右侧台面平放）；面块剩左边一截；双手从中间抓起面条一抖
-    const k = Math.min(2, Math.floor((lt - 2.25) / .25)), fan = [.06, .32, .17][k], amp = [10, 7, 4][k], lift = [0, -24, -10][k];
-    block(g, LX, KX0 - NW * 6, lw, true);
-    const ck = C('knife');
-    const cp = C('pin');                                                                              // 放下的切面刀：同一把（长方形薄刃 + 刀背后端的木柄）
-    g.lineCap = 'round'; g.strokeStyle = cp.l; g.lineWidth = 34; g.beginPath(); g.moveTo(1520, 884); g.lineTo(1370, 912); g.stroke();
-    g.strokeStyle = cp.f; g.lineWidth = 34 - 2 * lw; g.stroke();
-    cel(g, poly([[1510, 846], [1860, 800], [1874, 852], [1524, 900]]), { f: ck.f, s: ck.s, so: [0, -10], l: ck.l, lw });
-    for (const [bx, sd, seed] of [[800, -1, 11], [1160, 1, 23]]) {
-      bundle(g, bx, 330 + lift, fan, amp, seed, lw, lt);
-      hand(g, null, { x: bx, y: 330 + lift, s: 220, rot: -sd * .7, side: sd < 0 ? 'L' : 'R', pose: PINCH[k], light: 'warm', arm: .04, lw });   // 指尖捏住面把，前臂从下方往外斜着出画
-    }
-    const fl = C('flour').f, dt = lt - 2.25;                                                        // 干粉点按 24 帧落下
-    for (let i = 0; i < 40; i++) {
-      const x0 = (i % 2 ? 1160 : 800) + (hash(i * 2.3) - .5) * 260, y = 420 + hash(i * 5.1) * 300 + dt * (420 + 300 * hash(i));
-      g.fillStyle = rgba(fl, .9); g.beginPath(); g.arc(x0 + Math.sin(dt * 6 + i) * 6, y, 1 + 2 * hash(i * 9.7), 0, TAU); g.fill();
+    // 左手先捏起第一把面抖开；右手握着刀往右放平（三张，两拍一张），2.5 松手，2.667 捏起第二把面跟上
+    const ph = Math.floor(lt * 12) / 12 * 9, xs = [cx + .035, cx + .155];
+    const pinchAt = (H, sd, i, k) => {                       // k = 第几张：0 捏住（低）、1 提起抖开、2 抖完
+      const yk = [.12, .245, .225][k], fan = [.06, .36, .2][k], amp = [.012, .01, .004][k];
+      const tc = Math.floor(lt * 12 + 1e-6) / 12, jig = [0, .008, .003][k] * Math.sin(tc * 6 * Math.PI + i * 1.7);   // 抖：12 fps 一张，左右小幅晃
+      const P = V3(xs[i] + jig, yk + jig * .4, .05);
+      H.pose(POSE.pinch); orient(H.root, V3(sd * .75, .6, .25), V3(sd * .4, .25, .88));
+      H.root.position.set(0, 0, 0);
+      const pm = wp(H, 'thumb-tip').add(wp(H, 'index-finger-tip')).multiplyScalar(.5);
+      H.root.position.copy(P).add(V3(0, .006, 0)).sub(pm);
+      H.reachArm(sd < 0 ? SH.L : SH.R);
+      s.bun[i].visible = true; s.bun[i].geometry.dispose(); s.bun[i].geometry = bundleGeo(P, fan, amp, ph + i * 2, 11 + i * 12, .002);
+    };
+    pinchAt(HLh, -1, 0, nk);
+    const d = Math.min(2, Math.floor((lt - 2.25) * 12 + 1e-6)), [px, py, pz, ry, rz] = PUT[d];
+    K.position.set(px === null ? cx + .08 : px, py, pz); K.rotation.set(0, ry, rz);
+    if (lt < TR) { gripKnife(HRh, K); if (d === 2) { HRh.pose(POSE.open); HRh.root.position.y += .012; } HRh.reachArm(SH.R); s.bun[1].visible = false; }
+    else if (lt < TP) {                                       // 松开的手从刀上方挪到第二把面上方（两张）
+      gripKnife(HRh, K); HRh.pose(POSE.open); HRh.root.position.y += .012;
+      const a = HRh.root.position.clone(), qa = HRh.root.quaternion.clone();
+      pinchAt(HRh, 1, 1, 0); HRh.pose(POSE.open); s.bun[1].visible = false;
+      const u = lt < TR + 1 / 12 ? .4 : .75;
+      HRh.root.position.lerpVectors(a, HRh.root.position.clone().add(V3(0, .03, 0)), u); HRh.root.quaternion.slerpQuaternions(qa, HRh.root.quaternion.clone(), u);
+      HRh.reachArm(SH.R);
+    } else pinchAt(HRh, 1, 1, lt < TP + 1 / 6 ? 0 : 1);
+  }
+  camera(s, lt);
+  draw3d(g, e, s.scene, s.cam);
+  if (cutting && e) {                                         // 刃口高光进发光板（推近时一道亮线）：借剪影那一遍留下的深度，只画没被手、面块挡住的那段
+    const { r, c } = renderer(), ac = r.autoClear;
+    K.userData.edge.layers.enable(1); s.cam.layers.set(1); s.scene.overrideMaterial = GLOW; r.autoClear = false;
+    r.clearColor(); r.render(s.scene, s.cam);
+    r.autoClear = ac; s.scene.overrideMaterial = null; s.cam.layers.set(0);
+    e.drawImage(c, 0, 0);
+  }
+  if (!cutting) {                                             // 干粉按 24 帧落下（三维点投到屏幕上画）
+    const fl = C('flour').f, dt = lt - 2.25;
+    for (let i = 0; i < 36; i++) {
+      const y = .2 - hash(i * 5.1) * .08 - dt * (.25 + .2 * hash(i));
+      if (y < 0 || (i % 2 && lt < TP)) continue;
+      const v = V3(cx + (i % 2 ? .155 : .035) + (hash(i * 2.3) - .5) * .08, y, .05 + (hash(i * 7.1) - .5) * .04).project(s.cam);
+      g.fillStyle = rgba(fl, .9); g.beginPath(); g.arc((v.x + 1) * 960 + Math.sin(dt * 6 + i) * 4, (1 - v.y) * 540, 1 + 2 * hash(i * 9.7), 0, TAU); g.fill();
     }
   }
-  for (const x of [g, e]) x.setTransform(1, 0, 0, 1, 0, 0);
   return {};
 }

@@ -1,241 +1,262 @@
-// S2（3.0–6.0 s）特写 · 正俯：面粉从画外落进灯圈，像雪；手影先到，大手入画，5.25 三指压出面窝，5.5 起手指从面窝里抬起（TREATMENT §4 / §5，CONTINUITY S1→S2、S2→S3）
-// 粗剪第 2 轮：灯圈带着 S1 吊灯摆的余晃（头 1.5 s 左右晃两下、衰减到停）；手型自己摆（backHand：手背朝镜头，四指各自的角度和可见长度），不再借 press 拳头。
-// 灯在师傅这一侧（画面下偏左的上方）→ 影子往右上投；手从画面右下角入画（师傅站在近侧），手影先进画。缓推 100% → 104%（锚点 = 面窝中心）。
-// 图层：台面（底板 → 晃动的灯圈 → 木纹粉点）→ 面堆投影 → 面堆 → 落定的粉点 → 面窝 → 手影 → 远处的落粉 → 手 + 指尖压进去的粉边 + 粉雾 → 近处的落粉
-import { cel, path, rgba, mix, rng, hash, airbrush, canvas, TAU, W, H } from '../lib/cel.js';
-import { C } from '../pal.js';
-import { digit, part, backOfHand, FW, FWK } from '../hands.js';
+// S2（3.0–6.0 s）特写 · 正俯偏斜 · 三渲二（TREATMENT §4 / §4.4 / §5，CONTINUITY S1→S2、S2→S3）。2D 版原样备份在 s2_2d.js。
+// 透视相机从师傅这一侧斜俯 56°、往右偏 12°，缓推 100% → 104%（ease-in-out，锚在面窝）。案板 = 贴二维木纹 + 灯圈的平面（灯圈带 S1 吊灯的余晃，
+// 每帧重画进 CanvasTexture）+ 只收投影的平面；面粉堆 = 极坐标网格的三维鼓堆（几个鼓包 → 明暗交界线跟着弯），三指压下去时网格里挖出面窝、窝边隆起、三个指坑。
+// 一盏白色方向光（吊灯在左上、偏师傅这一侧 → 投影往右上，手影先到），硬边投影，不加环境光。落粉 = 三维小粉粒（卡通材质、不描边），落定后留在台面 / 面堆上。
+// 世界坐标（米）：X 向右，Y 向上，Z 朝镜头（师傅这一侧）；面堆中心在原点，台面 y = 0。手按 12 fps 换张，镜头、灯、落粉每帧动。
+import * as THREE from 'three';
+import { line, mix, rgba, rng, hash, canvas, airbrush, TAU, W, H } from '../lib/cel.js';
+import { C, BG } from '../pal.js';
+import { toon, sun, draw3d, renderer } from '../lib3d.js';
+import { makeHand } from '../hand3d.js';
 
 const f24 = t => Math.floor(t * 24 + 1e-6) / 24;
 const f12 = t => Math.floor(t * 12 + 1e-6) / 12;
 const ease = u => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
-const M = [960, 470];                 // 面堆 / 面窝中心（屏幕），也是推镜锚点
-const LD = [-.35, .94];               // 屏幕上朝灯的方向
-const DOUGH = C('dough'), FLOUR = C('flour');
-const WOOD = { base: '#7A4A2A', halo: '#A86E3C', hot: '#C08048', dark: '#4A3550', grain: '#3A2418' };
-const SHADOW = '#4A3550';
+const D2R = Math.PI / 180, B = BG.warm, DOUGH = C('dough'), FLOUR = C('flour');
+const MR = 0.125, MH = 0.08;                                         // 面粉堆半径、高（米）
+const LIGHT = [-0.75, 0.85, 0.35];                                    // 光从哪来：左、上（仰角约 46°）、偏师傅这一侧
 
-// —— 台面：底板（横铺木板）和面上的木纹 / 木节 / 粉点分两张缓存，中间每帧画灯圈（跟着吊灯余晃移）——
+// —— 台面贴图（2D 版的画法搬到世界坐标）：X ∈ [−.5, .5]，Z ∈ [−.45, .35]；木板横铺，宽 13.5 cm（同 S4）——
+const KP = 3000, X0 = -0.5, Z0 = -0.45, PW = 1.0, PD = 0.8;
+const toP = (x, z) => [(x - X0) * KP, (z - Z0) * KP];
+const edgeR = a => MR * (1 + .05 * Math.sin(3 * a + 1) + .03 * Math.sin(5 * a + 2) + .015 * Math.sin(11 * a + 4));
 let PL = null;
-function plate() {
+function plates() {
   if (PL) return PL;
-  const [c0, g0] = canvas(W, H), [c, g] = canvas(W, H), R = rng(2024);
-  g0.fillStyle = WOOD.base; g0.fillRect(0, 0, W, H);
-  const seams = [-60, 190, 455, 735, 1000, 1240];
-  for (let i = 0; i < seams.length - 1; i++) { g0.fillStyle = rgba(i % 2 ? '#5E3620' : '#8A5530', .3 + hash(i + 3) * .25); g0.fillRect(0, seams[i], W, seams[i + 1] - seams[i]); }
-  g.lineCap = 'round'; g.lineJoin = 'round';
-  for (let i = 0; i < seams.length - 1; i++) {
-    const y0 = seams[i], y1 = seams[i + 1];
-    for (let k = 0; k < 8; k++) {
-      const yb = y0 + (k + .5) / 8 * (y1 - y0), A = 3 + R() * 9, f = .002 + R() * .004, ph = R() * TAU;
-      g.strokeStyle = rgba(WOOD.grain, .16 + R() * .2); g.lineWidth = 1.2 + R() * 1.8; g.beginPath();
-      for (let x = -24; x <= W + 24; x += 24) { const y = yb + A * Math.sin(x * f + ph) + 5 * Math.sin(x * .011 + ph * 2); x < 0 ? g.moveTo(x, y) : g.lineTo(x, y); }
-      g.stroke();
+  const w = Math.round(PW * KP), h = Math.round(PD * KP), R = rng(2024);
+  const [c0, g0] = canvas(w, h), [c1, g1] = canvas(w, h), [cv, gv] = canvas(w, h), pw = 0.135 * KP;
+  g0.fillStyle = B.wood; g0.fillRect(0, 0, w, h);
+  const seams = []; for (let z = -0.435; z < 0.36; z += 0.135) seams.push(toP(0, z)[1]);
+  seams.forEach((y0, i) => { g0.fillStyle = rgba(i % 2 ? '#5E3620' : '#8A5530', .3 + hash(i + 3) * .25); g0.fillRect(0, y0, w, pw); });
+  g1.lineCap = 'round'; g1.lineJoin = 'round';
+  for (const y0 of seams) {
+    for (let k = 0; k < 9; k++) {
+      const yb = y0 + (k + .5) / 9 * pw, A = 6 + R() * 16, f = .001 + R() * .002, ph = R() * TAU;
+      g1.strokeStyle = rgba(B.grain, .16 + R() * .2); g1.lineWidth = 1.6 + R() * 2.2; g1.beginPath();
+      for (let x = -40; x <= w + 40; x += 40) { const y = yb + A * Math.sin(x * f + ph) + 8 * Math.sin(x * .0055 + ph * 2); x < 0 ? g1.moveTo(x, y) : g1.lineTo(x, y); }
+      g1.stroke();
     }
-    g.strokeStyle = rgba('#24120C', .7); g.lineWidth = 4; g.beginPath(); g.moveTo(0, y0); g.lineTo(W, y0 + 8); g.stroke();
-    g.strokeStyle = rgba('#D09050', .22); g.lineWidth = 2; g.beginPath(); g.moveTo(0, y0 + 4); g.lineTo(W, y0 + 12); g.stroke();
+    g1.strokeStyle = rgba('#24120C', .7); g1.lineWidth = 6; g1.beginPath(); g1.moveTo(0, y0); g1.lineTo(w, y0 + 10); g1.stroke();
+    g1.strokeStyle = rgba('#D09050', .22); g1.lineWidth = 3; g1.beginPath(); g1.moveTo(0, y0 + 6); g1.lineTo(w, y0 + 16); g1.stroke();
   }
-  for (const [x, y, r] of [[250, 300, 30], [1650, 860, 26], [1500, 110, 20]]) {
-    for (let k = 3; k >= 0; k--) { g.strokeStyle = rgba(WOOD.grain, .3); g.lineWidth = 2; g.beginPath(); g.ellipse(x, y, r * (1 + k * .7), r * (.42 + k * .3), 0, 0, TAU); g.stroke(); }
-    g.fillStyle = rgba(WOOD.grain, .55); g.beginPath(); g.ellipse(x, y, r, r * .42, 0, 0, TAU); g.fill();
+  for (const [X, Z, r] of [[-0.33, -0.21, 40], [0.36, 0.12, 34], [0.27, -0.34, 28]]) {
+    const [x, y] = toP(X, Z);
+    for (let k = 3; k >= 0; k--) { g1.strokeStyle = rgba(B.grain, .3); g1.lineWidth = 3; g1.beginPath(); g1.ellipse(x, y, r * (1 + k * .7), r * (.42 + k * .3), 0, 0, TAU); g1.stroke(); }
+    g1.fillStyle = rgba(B.grain, .55); g1.beginPath(); g1.ellipse(x, y, r, r * .42, 0, 0, TAU); g1.fill();
   }
-  airbrush(g, M[0], M[1] + 10, 640, 580, FLOUR.f, .2, .85);   // 面堆四周的薄粉 + 硬边粉点，离面堆越远越稀越小
-  for (let i = 0; i < 1100; i++) {
-    const a = R() * TAU, d = 400 + Math.pow(R(), 1.7) * 760, x = M[0] + Math.cos(a) * d * 1.1, y = M[1] + Math.sin(a) * d * .95;
-    const r = (1.1 + R() * 2.6) * (1 - Math.min(1, (d - 400) / 760) * .55);
-    g.fillStyle = rgba(FLOUR.f, .5 + R() * .5); g.beginPath(); g.ellipse(x, y, r * (1 + R() * .8), r, R() * TAU, 0, TAU); g.fill();
+  const [mx, my] = toP(0, 0);
+  airbrush(g1, mx, my, 0.2 * KP, 0.18 * KP, FLOUR.f, .2, .85);         // 面堆四周的薄粉 + 硬边粉点，离面堆越远越稀越小
+  for (let i = 0; i < 1400; i++) {
+    const a = R() * TAU, d = 0.115 + Math.pow(R(), 1.7) * 0.25, [x, y] = toP(Math.cos(a) * d * 1.1, Math.sin(a) * d * .95);
+    const r = (1.6 + R() * 3.6) * (1 - Math.min(1, (d - 0.115) / 0.25) * .55);
+    g1.fillStyle = rgba(FLOUR.f, .5 + R() * .5); g1.beginPath(); g1.ellipse(x, y, r * (1 + R() * .8), r, R() * TAU, 0, TAU); g1.fill();
   }
-  PL = { base: c0, top: c }; return PL;
+  const tex = new THREE.CanvasTexture(cv); tex.anisotropy = renderer().r.capabilities.getMaxAnisotropy();
+  return (PL = { base: c0, top: c1, gv, w, h, tex });
 }
-// 吊灯余晃：S1 的摆在 3.0 刚回到中间，这里接着再晃两个半摆（±46 → ±22 px），1.5 s 停
-const sway = lt => lt >= 1.5 ? 0 : (lt < .75 ? -46 : -22) * Math.sin(Math.PI * lt / .75);
-function pool(g, dx) {   // 灯圈：圈心在画面下偏左，圈边在上面两角看得见；圈外压暗
-  const cx = 860 + dx, cy = 700;
-  const h = g.createRadialGradient(cx, cy, 40, cx, cy, 900);
-  h.addColorStop(0, rgba(WOOD.hot, .9)); h.addColorStop(.5, rgba(WOOD.halo, .85)); h.addColorStop(.86, rgba(WOOD.halo, .6)); h.addColorStop(.93, rgba(WOOD.halo, .12)); h.addColorStop(1, rgba(WOOD.halo, 0));
-  g.fillStyle = h; g.fillRect(0, 0, W, H);
-  const v = g.createRadialGradient(cx, cy, 830, cx, cy, 1350);
-  v.addColorStop(0, rgba(WOOD.dark, 0)); v.addColorStop(.12, rgba(WOOD.dark, .4)); v.addColorStop(1, rgba(WOOD.dark, .9));
-  g.fillStyle = v; g.fillRect(0, 0, W, H);
+// 吊灯余晃：S1 的摆在 3.0 刚回到中间，这里接着再晃两个半摆（±1.4 → ±0.7 cm），1.5 s 停
+const sway = lt => lt >= 1.5 ? 0 : (lt < .75 ? -0.014 : -0.007) * Math.sin(Math.PI * lt / .75);
+function boardFrame(dx, gr) {   // 每帧：木板底 → 灯圈（圈心在面堆左前方）→ 木纹 / 粉点 → 面堆脚的一圈轮廓线
+  const { base, top, gv, w, h, tex } = plates(), [cx, cy] = toP(-0.03 + dx, 0.065);
+  gv.drawImage(base, 0, 0);
+  const hg = gv.createRadialGradient(cx, cy, 0.011 * KP, cx, cy, 0.25 * KP);
+  hg.addColorStop(0, rgba('#C08048', .9)); hg.addColorStop(.5, rgba(B.woodHalo, .85)); hg.addColorStop(.86, rgba(B.woodHalo, .6)); hg.addColorStop(.93, rgba(B.woodHalo, .12)); hg.addColorStop(1, rgba(B.woodHalo, 0));
+  gv.fillStyle = hg; gv.fillRect(0, 0, w, h);
+  const v = gv.createRadialGradient(cx, cy, 0.23 * KP, cx, cy, 0.38 * KP);
+  v.addColorStop(0, rgba(B.woodDark, 0)); v.addColorStop(.12, rgba(B.woodDark, .4)); v.addColorStop(1, rgba(B.woodDark, .9));
+  gv.fillStyle = v; gv.fillRect(0, 0, w, h);
+  gv.drawImage(top, 0, 0);
+  gv.strokeStyle = DOUGH.l; gv.lineWidth = 2.4; gv.beginPath();
+  for (let i = 0; i <= 120; i++) { const a = i / 120 * TAU, r = edgeR(a) * gr * .985, [x, y] = toP(Math.cos(a) * r, Math.sin(a) * r); i ? gv.lineTo(x, y) : gv.moveTo(x, y); }
+  gv.stroke();
+  tex.needsUpdate = true;
 }
 
-// 不规则的圆团（面堆、面窝、粉雾）
-function blob(cx, cy, rx, ry, n, seed, amp) {
-  const pts = [];
-  for (let i = 0; i < n; i++) { const a = i / n * TAU, k = 1 + amp * (hash(seed + i * 1.73) * 2 - 1); pts.push([cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k]); }
-  return pts;
-}
-const lens = (x, y, a, b, ang) => { const c = Math.cos(ang), s = Math.sin(ang); return [[x - c * a, y - s * a], [x - s * b, y + c * b], [x + c * a, y + s * a], [x + s * b, y - c * b]]; };
-
-// —— 面堆：gr = 长大的比例（落粉堆上去）——
-function mound(g, gr) {
-  const rx = 450 * gr, ry = 410 * gr, P = blob(M[0], M[1], rx, ry, 24, 7, .045);
-  g.fillStyle = rgba(SHADOW, .5); g.fill(path(P.map(([x, y]) => [x + 20 * gr, y - 46 * gr])));   // 投影往右上
-  const sh = [], hi = [];
-  for (let k = 0; k < 10; k++) {   // 粉堆的鼓包：背光半边是硬边小影，朝灯半边是硬边亮块
-    const a = hash(k + 40) * TAU, d = .25 + hash(k + 60) * .6, x = M[0] + Math.cos(a) * rx * d, y = M[1] + Math.sin(a) * ry * d;
-    const lit = Math.cos(a) * LD[0] + Math.sin(a) * LD[1] > 0;
-    (lit ? hi : sh).push(lens(x, y, (26 + hash(k + 80) * 34) * gr, 7 * gr, a + Math.PI / 2 + (hash(k + 90) - .5)));
+// —— 面粉堆高度：圆鼓的堆 + 鼓包；Wl = { p 面窝压下去的程度 0..1, pits: [[x, z, 深]] 三个指坑 } ——
+const BUMPS = Array.from({ length: 14 }, (_, k) => { const a = hash(k + 40) * TAU, d = .2 + hash(k + 60) * .65; return [Math.cos(a) * d * MR, Math.sin(a) * d * MR, (hash(k + 80) - .35) * 0.012, 0.012 + hash(k + 90) * 0.016]; });
+function hgt(x, z, gr, Wl) {
+  const u = Math.hypot(x, z) / (edgeR(Math.atan2(z, x)) * gr);
+  if (u >= 1) return -0.003;
+  const fall = 1 - u * u;
+  let y = MH * gr * Math.pow(1 - u, 1.3) * (1 + 1.3 * u);   // 堆尖圆、腰陡、脚往外摊
+  for (const [bx, bz, bh, bs] of BUMPS) y += bh * gr * fall * Math.exp(-((x - bx * gr) ** 2 + (z - bz * gr) ** 2) / (bs * bs));
+  if (Wl && Wl.p > 0) {
+    const d = Math.hypot(x, z);
+    y += Wl.p * (-0.04 * Math.exp(-((d / 0.04) ** 2)) + 0.012 * Math.exp(-(((d - 0.062) / 0.016) ** 2)));   // 面窝 + 窝边隆起的一圈
   }
-  hi.push(blob(M[0] - 80 * gr, M[1] + 335 * gr, 240 * gr, 46 * gr, 14, 31, .1));   // 朝灯的那面坡
-  cel(g, P, { f: DOUGH.f, s: DOUGH.s, so: [LD[0] * 78 * gr, LD[1] * 78 * gr], sh, h: FLOUR.f, hi, l: DOUGH.l, lw: 1.6 });
+  if (Wl) for (const [tx, tz, td] of Wl.pits) y -= td * Math.exp(-((x - tx) ** 2 + (z - tz) ** 2) / (0.0085 ** 2));
+  return y;
+}
+const NR = 72, NS = 180;
+function moundGeo(gr, Wl) {
+  const pos = new Float32Array((NR + 1) * NS * 3), idx = [];
+  for (let i = 0; i <= NR; i++) for (let j = 0; j < NS; j++) {
+    const a = j / NS * TAU, r = (i / NR) * edgeR(a) * gr * 1.03, x = Math.cos(a) * r, z = Math.sin(a) * r;
+    pos.set([x, hgt(x, z, gr, Wl), z], (i * NS + j) * 3);
+  }
+  for (let i = 0; i < NR; i++) for (let j = 0; j < NS; j++) { const a = i * NS + j, b = i * NS + (j + 1) % NS; idx.push(a, b, a + NS, b, b + NS, a + NS); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  return geo;
 }
 
-// —— 面窝：压下去的那一刻出现，直径约 520 px ——
-function well(g) {
-  const c = [M[0] + 4, M[1] + 12], away = [-LD[0], -LD[1]];
-  const ring = blob(c[0], c[1], 318, 292, 20, 53, .05);   // 窝边隆起的一圈
-  cel(g, ring, { f: FLOUR.f, s: DOUGH.s, so: [LD[0] * 22, LD[1] * 22], l: DOUGH.l, lw: 1.6 });
-  const P = blob(c[0], c[1], 262, 238, 20, 51, .045);
-  const floor = blob(c[0] + away[0] * 26, c[1] + away[1] * 26, 170, 150, 14, 57, .08);
-  cel(g, P, { f: mix(DOUGH.f, DOUGH.s, .2), s: DOUGH.s, so: [away[0] * 54, away[1] * 54], h: FLOUR.f, hi: [floor], l: DOUGH.l, lw: 1.6 });
-  const R = rng(77); g.fillStyle = FLOUR.f;   // 窝底撒的干粉
-  for (let i = 0; i < 70; i++) { const a = R() * TAU, d = Math.sqrt(R()) * 200; g.beginPath(); g.arc(c[0] + Math.cos(a) * d, c[1] + Math.sin(a) * d * .9, 1.4 + R() * 2.4, 0, TAU); g.fill(); }
-}
-
-// —— 手型：右手手背朝镜头（本地：掌宽 = 1，y 向下，前臂从 +y 来，指尖朝 −y）——
-// 粗剪第 3 轮（第 2 版的手像机器：四指平行等距像耙子、每节直、拇指像插在掌边的木栓、手腕前臂一根直管）：
-// 四指（小 → 食，同 hands.js FING 的画序）各给 [根节角°, 中节再弯°, 末节再弯°（都相对根节）, 三节各自的可见比例]：
-//   每个关节都弯一点（5–20°），弯向中指一侧（屈指时指尖往一处聚）；四根张开的角度、间隔、透视缩短都各不相同；
-//   指根骨节排成一道弧、间距不等（食—中宽、无名—小窄，小指根最低）
-// 拇指根落在掌的桡侧边上（掌外形在这里鼓出第一掌骨，虎口一道软弧接到食指根），斜着往前伸，和食指之间留开一个 V，不贴着四指
-// wa = 前臂方向（本地°）：比 90 小 = 腕往小指一侧折一点（尺偏），前臂斜着从右下角进来，手和前臂不是一根直管
-const DG = Math.PI / 180, FN = ['l', 'r', 'm', 'i'], FL = { l: .50, r: .63, m: .68, i: .62 }, PH = [.45, .30, .25];
-const MCP = [[.34, -.37], [.14, -.47], [-.09, -.51], [-.33, -.45]];
-const PALM = [[-.46, -.43], [-.28, -.51], [-.08, -.55], [.13, -.52], [.33, -.45], [.48, -.33], [.53, -.04], [.48, .28], [.37, .54, 1], [-.31, .56, 1], [-.46, .34], [-.60, .14], [-.66, -.02], [-.62, -.16], [-.55, -.30]];
-const WEB = [[-.66, -.20], [-.65, -.02], [-.58, -.04], [-.58, -.14], [-.56, -.22]];
-function backHand(q) {   // q = { fy 掌的纵向透视（腕抬起来多少）, wa 前臂方向°, f: 四指, th: [x, y, 角1, 角2, 长1, 长2] 拇指, seed }
-  const Y = p => p.length > 2 ? [p[0], p[1] * q.fy, p[2]] : [p[0], p[1] * q.fy];
-  const palm = part('skin', ['W', ...PALM.map(Y)], { cal: [WEB.map(Y)] }), mcp = MCP.map(Y);
-  backOfHand(palm, mcp, [.02, .50 * q.fy], q.seed);
-  const fing = [], tips = [];
-  FN.forEach((f, i) => {
-    const [a, b1, b2, ...k] = q.f[i], angs = [a, a + b1, a + b2], ls = PH.map((p, j) => FL[f] * p * k[j]), n = ls.filter(l => l > .012).length;
-    fing.push(...digit(mcp[i], angs.slice(0, n), ls.slice(0, n), { w: FW * FWK[f], back: true, nail: q.nail, id: i + q.seed * 4, cal: f === 'i' ? -1 : 0 }));
-    let p = mcp[i]; for (let j = 0; j < n; j++) p = [p[0] + Math.cos(angs[j] * DG) * ls[j], p[1] + Math.sin(angs[j] * DG) * ls[j]]; tips.push(p);
-  });
-  const [tx, ty, t1, t2, l1, l2] = q.th, thumb = digit([tx, ty * q.fy], [t1, t2], [l1, l2], { w: .28, nail: true, back: true, id: 9 + q.seed });
-  return { arm: { w: [.03, .53 * q.fy], a: q.wa }, parts: [...thumb, palm, ...fing], tips };
-}
-const mixQ = (a, b, w) => Array.isArray(a) ? a.map((v, i) => mixQ(v, b[i], w)) : typeof a === 'number' ? a + (b - a) * w : a;
-// app 落下来：四指放松、各自微弯、张开不等（食指往外、小指张得最开最弯），拇指斜伸在外；
-// press 食 / 中 / 无名三指收拢往下扎：食指、无名指往中指那边靠（指尖聚到一处），中节、末节几乎竖直只露一点；小指松着蜷在旁边、尖往里勾；
-//   拇指斜着搭在一侧、不贴食指；lift 三指从窝里拔出来：指节回直一些、略散开，指尖沾着粉
-const Q = {
-  app:   { fy: .80, wa: 77, seed: 5, f: [[-66, -9, -20, .84, .60, .42], [-82, -4, -10, .90, .68, .50], [-91, 3, 7, .95, .74, .56], [-103, 6, 13, .92, .72, .55]], th: [-.57, .04, -130, -116, .31, .25] },
-  press: { fy: .86, wa: 76, seed: 5, f: [[-74, -14, -30, .66, .34, .14], [-97, -5, -11, .78, .40, .18], [-91, 2, 4, .86, .42, .20], [-84, 6, 12, .80, .44, .22]], th: [-.57, .04, -124, -108, .30, .24] },
-  lift:  { fy: .84, wa: 77, seed: 5, f: [[-63, -12, -27, .76, .46, .24], [-83, -5, -11, .86, .56, .36], [-91, 3, 7, .90, .60, .40], [-100, 7, 15, .86, .58, .38]], th: [-.57, .04, -127, -112, .31, .25] },
+// —— 手型（度，同 hand3d.pose）：[张开（正 = 往拇指那边）, 掌指关节弯, 中节弯, 末节弯] ——
+// 机位在师傅身后斜上方：手若顺着视线往前扎，手指正对镜头、缩成一个拳头。所以前臂从右下角斜进来、手指朝左上扎进面窝 → 三根指头侧着压下去，整根看得见
+// app 落下来：四指放松、略弯、张开不等；press 食 / 中 / 无名三指并拢斜扎（食指、无名指往中指靠，指尖聚到一处），小指蜷在旁边；
+// lift 三指从窝里拔出来：指节回直一些、略散开
+const POSE = {
+  app:   { thumb: [-8, 8, 8, 4], index: [6, 8, 10, 6], middle: [0, 8, 10, 6], ring: [-6, 10, 12, 6], pinky: [-12, 18, 20, 10] },
+  press: { thumb: [-14, 6, 8, 4], index: [-3, 10, 16, 12], middle: [0, 10, 16, 12], ring: [3, 12, 18, 12], pinky: [6, 42, 52, 30] },
+  lift:  { thumb: [-12, 6, 8, 4], index: [-1, 8, 12, 8], middle: [0, 8, 12, 8], ring: [1, 10, 14, 8], pinky: [4, 38, 46, 26] },
 };
-// 一只手的一张：手型 + 让食 / 中 / 无名三个指尖的中心落在锚点上
-function handDef(q) {
-  const d = backHand(q), c = [0, 1, 2].map(j => d.tips[j + 1]).reduce((a, p) => [a[0] + p[0] / 3, a[1] + p[1] / 3], [0, 0]);
-  d.off = [-c[0], -c[1]]; return d;
-}
-const tipsOn = (q, x, y, s, rot) => { const d = handDef(q), cr = Math.cos(rot), sr = Math.sin(rot);   // 三个指尖的屏幕坐标
-  return d.tips.slice(1).map(([a, b]) => { const u = (a + d.off[0]) * s, v = (b + d.off[1]) * s; return [x + u * cr - v * sr, y + u * sr + v * cr]; }); };
-
-// —— 手：12 fps 一张，[lt, x, y, 掌宽, rot, 手型 a, 手型 b, 权重]；锚点 = 三个指尖的中心。从右下角入画，先略抬（预备），5.25 压下、多停 2 张，5.5 起往上拔 ——
+const mixP = (a, b, w) => Object.fromEntries(Object.keys(a).map(k => [k, a[k].map((v, i) => v + (b[k][i] - v) * w)]));
+// [lt, 手型 a, b, 权重, 三指尖中心 x, y（null = 按面窝深度）, z, 俯仰°（负 = 指尖朝下）, 偏航°, 面窝 p, 往上拔的高度]
 const KEYS = [
-  [1.500, 1340, 1470, 420, -.36, 'app', 'app', 0], [1.583, 1300, 1340, 418, -.36, 'app', 'app', 0], [1.667, 1250, 1190, 415, -.35, 'app', 'app', 0],
-  [1.750, 1195, 1030, 410, -.34, 'app', 'app', 0], [1.833, 1125, 860, 405, -.33, 'app', 'app', 0], [1.917, 1055, 700, 400, -.32, 'app', 'app', 0],
-  [2.000, 1004, 572, 398, -.31, 'app', 'press', .2], [2.083, 980, 500, 404, -.30, 'app', 'press', .45], [2.167, 970, 464, 410, -.30, 'app', 'press', .65],
-  [2.250, 962, 482, 360, -.30, 'press', 'press', 0], [2.333, 961, 486, 356, -.305, 'press', 'press', 0], [2.417, 961, 485, 358, -.31, 'press', 'press', 0],
-  [2.500, 962, 490, 364, -.315, 'press', 'lift', .35], [2.583, 964, 500, 372, -.32, 'press', 'lift', .7], [2.667, 966, 510, 380, -.325, 'lift', 'lift', 0],
-  [2.750, 968, 518, 386, -.33, 'lift', 'lift', 0], [2.833, 969, 524, 390, -.33, 'lift', 'lift', 0], [2.917, 970, 528, 392, -.335, 'lift', 'lift', 0],
+  [1.667, 'app', 'app', 0, 0.190, 0.27, 0.250, -12, 50, 0],
+  [1.750, 'app', 'app', 0, 0.130, 0.20, 0.170, -15, 51, 0],
+  [1.833, 'app', 'app', 0, 0.070, 0.15, 0.090, -19, 52, 0],
+  [1.917, 'app', 'press', .4, 0.020, 0.122, 0.024, -24, 52, 0],
+  [2.000, 'press', 'press', 0, 0.005, null, 0.005, -30, 52, .2],
+  [2.083, 'press', 'press', 0, 0.002, null, 0.002, -31, 52, .5],
+  [2.167, 'press', 'press', 0, 0, null, 0, -32, 52, .8],
+  [2.250, 'press', 'press', 0, 0, null, 0, -32, 52, 1],
+  [2.333, 'press', 'press', 0, 0, null, 0, -32, 52, 1],
+  [2.417, 'press', 'press', 0, 0, null, 0, -32, 52, 1],
+  [2.500, 'press', 'lift', .5, 0.002, null, 0.002, -31, 52, 1, 0.006],
+  [2.583, 'lift', 'lift', 0, 0.005, null, 0.004, -29, 52, 1, 0.016],
+  [2.667, 'lift', 'lift', 0, 0.008, null, 0.007, -28, 52, 1, 0.028],
+  [2.750, 'lift', 'lift', 0, 0.011, null, 0.010, -27, 52, 1, 0.040],
+  [2.833, 'lift', 'lift', 0, 0.014, null, 0.013, -26, 52, 1, 0.050],
+  [2.917, 'lift', 'lift', 0, 0.017, null, 0.016, -25, 52, 1, 0.058],
 ];
-function keyAt(lt) { const q = f12(lt) + 1e-6; let k = null; for (const K of KEYS) if (K[0] <= q) k = K; return k; }
-const PRESS = 2.25, LIFT = 2.5, PK = KEYS[9];
+const keyAt = tc => { let k = null; for (const K of KEYS) if (K[0] <= tc + 1e-3) k = K; return k; };   // 容差 1e-3：key 时间写成三位小数（1.667 > 20/12），1e-6 会让六张 key 永远轮不到
+// 右肩（世界坐标，米）：师傅站在案板近侧（台边 z = .35），身体中线在 x ≈ .10（面堆右边一点 → 右手往左前方扎），肩在画框外的下方。
+// 落手时人还直一些（肩高 .46、离台边 .25），三指压下去时身子往前探、往下沉（肩高 .41、离台边 .20）。
+// 肘尖往下、往外（右手 +X）：往外多给一点，前臂才和朝左上扎的手对得上（手腕侧弯 ≤ 15°、屈 ≤ 34°；肘尖只往下时侧弯 33°）
+const SH0 = [0.30, 0.46, 0.60], SH1 = [0.30, 0.41, 0.55], POLE = [1.2, -1, 0], TIPS = ['index', 'middle', 'ring'];
+const shoulder = k => { const u = ease((k[0] - 1.667) / 0.333); return SH0.map((a, i) => a + (SH1[i] - a) * u); };
+const V = () => new THREE.Vector3();
 
-let SC = null;
-function handShadow(g, hd, o, alpha) {   // 手画进离屏 → 整块换成影子色 → 贴回台面（硬边）
-  SC = SC || canvas(W, H); const [c, x] = SC;
-  x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, W, H);
-  x.setTransform(g.getTransform()); hd(x, null, o);
-  x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = SHADOW; x.fillRect(0, 0, W, H); x.globalCompositeOperation = 'source-over';
-  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = alpha; g.drawImage(c, 0, 0); g.restore();
-}
-
-// 指尖扎进面里：每个指尖上盖一小团被顶起来的粉（硬边，比指头略宽）→ 指尖没进粉里
-// （第一版是横跨三指的一整道粉边，看着像一根白棍压在指头上）
-function sink(g, tips, s) {
-  tips.forEach(([x, y], i) => {
-    const r = s * (.07 - i * .004);
-    cel(g, blob(x, y - r * .25, r * 1.2, r * .78, 10, 760 + i * 7, .12), { f: FLOUR.f, s: mix(FLOUR.f, DOUGH.s, .45), so: [LD[0] * r * .35, LD[1] * r * .35], l: DOUGH.l, lw: 1.4 });
-  });
-}
-// 手指拔出来以后：窝边留下三个指坑；指尖上沾的粉（硬边小团）
-function holes(g) {
-  for (const [i, [x, y]] of tipsOn(Q.press, PK[1], PK[2], PK[3], PK[4]).entries()) {
-    const r = PK[3] * (.075 - i * .004);
-    cel(g, blob(x, y, r, r * .8, 9, 700 + i * 7, .1), { f: mix(DOUGH.f, DOUGH.s, .55), s: DOUGH.s, so: [-LD[0] * r * .5, -LD[1] * r * .5], l: DOUGH.l, lw: 1.4 });
-  }
-}
-function dust(g, tips, s) {
-  tips.forEach(([x, y], i) => { const r = s * (.05 - i * .004); cel(g, blob(x, y, r, r * .8, 8, 740 + i * 5, .2), { f: FLOUR.f, s: mix(FLOUR.f, DOUGH.s, .45), so: [LD[0] * r * .3, LD[1] * r * .3] }); });
-}
-// 压下那 3 张：粉雾一圈往外散（硬边团，第三张变淡）
-function puff(g, k) {
-  const R = rng(500), rad = [70, 120, 160][k], sz = [34, 46, 52][k], al = [1, .85, .5][k];
-  g.save(); g.globalAlpha = al;
-  for (let i = 0; i < 9; i++) {
-    const a = -Math.PI * .95 + i * .26 + R() * .15, d = rad * (.8 + R() * .5), r = sz * (.7 + R() * .6);
-    cel(g, blob(M[0] + Math.cos(a) * d * 1.3, M[1] + 14 + Math.sin(a) * d, r, r * .85, 9, 600 + i * 13, .12), { f: FLOUR.f, s: mix(FLOUR.f, DOUGH.s, .45), so: [LD[0] * r * .35, LD[1] * r * .35] });
-  }
-  g.restore();
-}
-
-// —— 落粉：从画面左上外面斜着飘进灯圈，越落越小（离镜头越远），落定后留一个粉点 ——
-const FALL = (() => {
+// —— 落粉：从左上（远侧、偏左）高处斜着飘下来，落定后留成扁粉点（台面上 / 面堆上）——
+const NF = 320, FALL = (() => {
   const R = rng(303), A = [];
-  for (let i = 0; i < 380; i++) {
-    const ts = -2.6 + R() * 4.3, D = 1.5 + R() * 1.1, a = R() * TAU, rho = 640 * Math.sqrt(R());
-    const L = [M[0] + Math.cos(a) * rho * 1.15, M[1] + Math.sin(a) * rho * .95];
-    const S = [L[0] + (L[0] - M[0]) * .35 - 170 - R() * 170, L[1] + (L[1] - M[1]) * .35 - 300 - R() * 220];
-    A.push({ ts, D, L, S, r0: 4.5 + R() * 6, r1: 1.4 + R() * 1.3, sw: 10 + R() * 22, fq: .5 + R() * .7, ph: R() * TAU });
+  for (let i = 0; i < NF; i++) {
+    const ts = -2.4 + R() * 4.4, D = 1.4 + R() * 1.1, a = R() * TAU, rho = 0.21 * Math.sqrt(R()), L = [Math.cos(a) * rho * 1.15, Math.sin(a) * rho * .9];
+    A.push({ ts, D, L, S: [L[0] - 0.05 - R() * 0.06, 0.30 + R() * 0.16, L[1] - 0.04 - R() * 0.05], r: 0.0007 + R() * 0.0007, sw: 0.004 + R() * 0.008, fq: .5 + R() * .7, ph: R() * TAU });
   }
   return A;
 })();
-function flour(g, lt, pass) {   // pass: 'land' 落定的点；'far' 落到一半以后；'near' 刚进画（离镜头近、大）
-  for (const p of FALL) {
-    const u = (lt - p.ts) / p.D;
-    if (u < 0) continue;
-    if (u >= 1) { if (pass === 'land') { g.fillStyle = FLOUR.f; g.beginPath(); g.arc(p.L[0], p.L[1], p.r1, 0, TAU); g.fill(); } continue; }
-    if ((pass === 'far') !== (u > .45) || pass === 'land') continue;
-    const sw = Math.sin(TAU * p.fq * lt + p.ph) * p.sw * (1 - u);
-    const x = p.S[0] + (p.L[0] - p.S[0]) * u + sw * .8, y = p.S[1] + (p.L[1] - p.S[1]) * u - sw * .45, r = p.r0 + (p.r1 - p.r0) * u;
-    if (r > 3.2) {   // 大粒：一小条硬边背光影
-      g.fillStyle = mix(FLOUR.f, FLOUR.s, .4); g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
-      g.fillStyle = FLOUR.f; g.beginPath(); g.arc(x + LD[0] * r * .28, y + LD[1] * r * .28, r * .86, 0, TAU); g.fill();
-    } else { g.fillStyle = rgba(FLOUR.f, .9); g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); }
+
+let S = null;
+function setup() {
+  if (S) return S;
+  const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(28, 16 / 9, 0.03, 10), pl = plates();
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(PW, PD), new THREE.MeshBasicMaterial({ map: pl.tex }));
+  board.rotation.x = -Math.PI / 2; board.position.set(X0 + PW / 2, 0, Z0 + PD / 2);
+  const shade = new THREE.Mesh(new THREE.PlaneGeometry(PW, PD), new THREE.ShadowMaterial({ color: new THREE.Color(B.woodDark), opacity: .55 }));
+  shade.rotation.x = -Math.PI / 2; shade.position.set(board.position.x, 0.0004, board.position.z); shade.receiveShadow = true;
+  for (const m of [board, shade]) { m.userData.bg = true; m.material.userData.outlineParameters = { visible: false }; }
+  const mound = new THREE.Mesh(new THREE.BufferGeometry(), toon({ ...DOUGH, h: FLOUR.f }, { t: .3, hi: .86 }));
+  mound.castShadow = mound.receiveShadow = true;
+  const flakes = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), toon(FLOUR, { t: .1, line: false }), NF);
+  flakes.receiveShadow = true;
+  const hand = makeHand('R'), orient = hand.root.children[0], glb = orient.children[0];
+  const capGeo = new THREE.IcosahedronGeometry(1, 2), cp = capGeo.attributes.position;
+  for (let i = 0; i < cp.count; i++) { const k = 1 + .14 * (hash(i * 1.37 + 5) - .5); cp.setXYZ(i, cp.getX(i) * k, cp.getY(i) * k, cp.getZ(i) * k); }
+  capGeo.computeVertexNormals();
+  const caps = TIPS.map(() => { const m = new THREE.Mesh(capGeo, toon(FLOUR, { t: .1 })); m.castShadow = true; scene.add(m); return m; });
+  scene.add(board, shade, mound, flakes, hand.root, hand.arm);
+  const L = sun(scene, LIGHT, 0.45, [0, 0.02, 0]);
+  return (S = { scene, cam, mound, flakes, hand, orient, glb, caps, L, BT: null });
+}
+
+// 摆手：手型 → 转向 → 让三个指尖的中心落在目标点 → 前臂接到腕上；返回三个指尖的世界坐标
+function place(s, k, gr) {
+  const [, a, b, w, tx, ty0, tz, pitch, yaw, p] = k, Hd = s.hand, v = V();
+  Hd.pose(mixP(POSE[a], POSE[b], w));
+  Hd.root.rotation.set(pitch * D2R, yaw * D2R, 0, 'YXZ'); Hd.root.position.set(0, 0, 0); Hd.root.updateMatrixWorld(true);
+  const tips = TIPS.map(f => Hd.B[`${f}-finger-tip`].getWorldPosition(V())), c = tips.reduce((A, q) => A.add(q), V()).multiplyScalar(1 / 3);
+  const ty = (ty0 ?? hgt(0, 0, gr, { p, pits: [] }) - 0.009 * p) + (k[10] || 0);
+  v.set(tx, ty, tz).sub(c); Hd.root.position.copy(v); Hd.root.updateMatrixWorld(true);
+  Hd.reachArm(shoulder(k), { pole: POLE });   // 前臂 → 肘（在画框下面）→ 上臂接到肩
+  return tips.map(q => q.add(v));
+}
+// 手腕那截皮肤圆柱（hand3d sleeve() 里第一个 cyl：胳膊局部系 y = -.02 → .07，手端伸进手里 2 cm）：1.833、1.917 两张手比 2.083 那张（干净）
+// 多往手心屈 7°、5°，圆柱手端的顶边从手背上露出来（一道直线 + 小尖角）。只这两张、只这只手的圆柱：换一份同尺寸、轴向分 12 段的圆柱，按腕弯过去 ——
+// 腕（胳膊局部系 y = 0）往手那头整段转 θ，腕 → 袖口下沿（y = .04）转角线性减到 0，袖口里那段不动（整根刚体转会从袖口下沿 / 袖口筒壁戳出来）。
+// θ = 「手相对胳膊比 2.083 那张多出来的方向差」× 2.5（1 倍线只短一点；2.5 倍顶边并进手腕轮廓）→ 约 18°、12°。其余的张用原来那份圆柱。
+const WFIX = [1.833, 1.917], WREF = 2.083, WF = 2.5, WCUFF = .04;
+const handDir = s => { s.hand.arm.updateMatrixWorld(true); return s.hand.arm.worldToLocal(s.hand.B['middle-finger-phalanx-proximal'].getWorldPosition(V())).normalize(); };
+function wristFix(s, k) {   // 在 place(s, k) 之后调；s.WR = { g0 原来那份圆柱, y0 圆柱中心在胳膊局部系的 y, d 2.083 那张腕 → 中指根的方向（胳膊局部系）}
+  const cy = s.hand.arm.children[0], W = s.WR;
+  if (!WFIX.includes(k[0])) { cy.geometry = W.g0; return; }
+  if (!W.g) { W.g = new THREE.CylinderGeometry(.028, .025, .09, 40, 12); W.P = W.g.attributes.position.array.slice(); W.N = W.g.attributes.normal.array.slice(); }
+  const q = new THREE.Quaternion().setFromUnitVectors(W.d, handDir(s)), ang = 2 * Math.acos(Math.min(1, q.w)) * WF, ax = V().set(q.x, q.y, q.z).normalize(), qv = new THREE.Quaternion(), v = V();
+  const Pa = W.g.attributes.position, Na = W.g.attributes.normal;
+  for (let i = 0; i < Pa.count; i++) {
+    const ya = W.P[i * 3 + 1] + W.y0;
+    qv.setFromAxisAngle(ax, ang * Math.min(1, Math.max(0, 1 - ya / WCUFF)));
+    v.set(W.P[i * 3], ya, W.P[i * 3 + 2]).applyQuaternion(qv); Pa.setXYZ(i, v.x, v.y - W.y0, v.z);
+    v.set(W.N[i * 3], W.N[i * 3 + 1], W.N[i * 3 + 2]).applyQuaternion(qv); Na.setXYZ(i, v.x, v.y, v.z);
   }
+  Pa.needsUpdate = Na.needsUpdate = true; W.g.computeBoundingSphere();
+  cy.geometry = W.g;
+}
+// 指尖沾的粉：每个指头末节上一团（中心在末节 6 成处，略偏指肚）
+function capsOn(s, show) {
+  const Hd = s.hand, q = new THREE.Quaternion();
+  TIPS.forEach((f, i) => {
+    const m = s.caps[i]; m.visible = show; if (!show) return;
+    const d = Hd.B[`${f}-finger-phalanx-distal`].getWorldPosition(V()), t = Hd.B[`${f}-finger-tip`].getWorldPosition(V());
+    Hd.B[`${f}-finger-phalanx-distal`].getWorldQuaternion(q);
+    const len = d.distanceTo(t), down = V().set(0, -1, 0).applyQuaternion(q).multiplyScalar(0.0018);
+    m.position.copy(d.lerp(t, .66)).add(down); m.quaternion.copy(q); m.scale.set(0.0118, 0.011, len * .46);
+  });
+}
+
+function flakesAt(s, lt, gr, Wl) {
+  const mo = new THREE.Object3D();
+  FALL.forEach((p, i) => {
+    const u = (lt - p.ts) / p.D;
+    if (u < 0) { mo.scale.setScalar(0); }
+    else if (u >= 1) {   // 落定：台面上 / 面堆上的扁粉点
+      const y = Math.max(0.0004, hgt(p.L[0], p.L[1], gr, Wl) + 0.0002);
+      mo.position.set(p.L[0], y, p.L[1]); mo.scale.set(p.r * 1.3, p.r * .35, p.r * 1.2); mo.rotation.set(0, hash(i) * TAU, 0);
+    } else {
+      const y1 = Math.max(0, hgt(p.L[0], p.L[1], gr, Wl)), sw = Math.sin(TAU * p.fq * lt + p.ph) * p.sw * (1 - u), e = u * u * (3 - 2 * u) * .3 + u * .7;
+      mo.position.set(p.S[0] + (p.L[0] - p.S[0]) * e + sw, p.S[1] + (y1 - p.S[1]) * e, p.S[2] + (p.L[1] - p.S[2]) * e - sw * .4);
+      mo.scale.setScalar(p.r); mo.rotation.set(p.ph, lt * 2 + p.ph, 0);
+    }
+    mo.updateMatrix(); s.flakes.setMatrixAt(i, mo.matrix);
+  });
+  s.flakes.instanceMatrix.needsUpdate = true;
 }
 
 export function draw(g, e, lt, A, t) {
   for (const x of [g, e]) { x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.filter = 'none'; }
   e.fillStyle = '#000'; e.fillRect(0, 0, W, H);
-  const lq = f24(lt), z = 1 + .04 * ease(lq / 3), T = [z, 0, 0, z, M[0] * (1 - z), M[1] * (1 - z)];
-  g.setTransform(...T); e.setTransform(...T);
-  const pl = plate();
-  g.drawImage(pl.base, 0, 0); pool(g, sway(lq)); g.drawImage(pl.top, 0, 0);
-  mound(g, .9 + .1 * ease(f12(lt) / 1.5));
-  flour(g, lq, 'land');
-  const k = keyAt(lt), pressed = lt >= PRESS, lifted = lt >= LIFT;
-  if (pressed) well(g);
-  if (lifted) holes(g);   // 指头拔出来以后只剩三个指坑（第一版压指尖的那道粉边留在窝边，像一根白棍横在窝里）
-  const hd = A?.mods?.hands?.hand;
-  if (k && hd) {
-    const [, x, y, s, rot, a, b, w] = k, q = mixQ(Q[a], Q[b], w), pose = () => handDef(q);
-    const hgt = Math.max(0, Math.min(1, (s - 360) / 60));
-    handShadow(g, hd, { x: x + 14 + 60 * hgt, y: y - 30 - 380 * hgt, s: s * (1 + .28 * hgt), rot, pose, side: 'R', light: 'warm', ld: LD, arm: 2.4 }, .55 - .13 * hgt);
-    flour(g, lq, 'far');
-    if (y < 1300) {
-      hd(g, e, { x, y, s, rot, pose, side: 'R', light: 'warm', ld: LD, arm: 2.4, lw: 1.6 });
-      if (pressed && !lifted) sink(g, tipsOn(q, x, y, s, rot), s);
-      if (lifted) dust(g, tipsOn(q, x, y, s, rot), s);
-    }
-  } else flour(g, lq, 'far');
-  if (pressed && lt < PRESS + .25) puff(g, Math.min(2, Math.floor((f12(lt) - PRESS + 1e-6) * 12)));
-  flour(g, lq, 'near');
-  g.setTransform(1, 0, 0, 1, 0, 0); e.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = B.woodDark; g.fillRect(0, 0, W, H);
+  const s = setup(), lq = f24(lt), tc = f12(lt), gr = .9 + .1 * ease(tc / 1.5), sw = sway(lq);
+  if (s.glb.parent !== s.orient) s.orient.add(s.glb);   // hand3d 的模型每只手只有一份：别的镜头建手时会把它挪走，这里挪回来
+  boardFrame(sw, gr);
+  const v = new THREE.Vector3(LIGHT[0] + sw * 4, LIGHT[1], LIGHT[2]).normalize();
+  s.L.position.set(v.x * 3, 0.02 + v.y * 3, v.z * 3);
+  const k = keyAt(tc), Wl = { p: 0, pits: [] };
+  s.hand.root.visible = s.hand.arm.visible = !!k;
+  if (k) {
+    const pit = (q, p, G) => [q.x, q.z, Math.max(0, Math.min(0.03, hgt(q.x, q.z, G, { p, pits: [] }) - q.y + 0.0015))];
+    if (!s.BT) s.BT = place(s, KEYS[7], 1).map(q => pit(q, 1, 1));   // 压到底那张的三个指坑：拔出来以后留在窝里
+    if (!s.WR) { const cy = s.hand.arm.children[0]; place(s, KEYS.find(K => K[0] === WREF), 1); s.WR = { g0: cy.geometry, y0: cy.position.y, d: handDir(s) }; }
+    const tips = place(s, k, gr), p = k[9];
+    wristFix(s, k);
+    Wl.p = p;
+    Wl.pits = k[0] >= 2.5 - 1e-6 ? s.BT : p > 0 ? tips.map(q => pit(q, p, gr)) : [];
+    capsOn(s, k[0] >= 2.0 - 1e-6);
+  } else capsOn(s, false);
+  s.mound.geometry.dispose(); s.mound.geometry = moundGeo(gr, Wl);
+  flakesAt(s, lq, gr, Wl);
+  const zq = 1 + .04 * ease(lq / 3), d = 0.72 / zq, el = 56 * D2R, az = 12 * D2R, tg = [0.004, 0.035, 0.03];
+  s.cam.position.set(tg[0] + d * Math.cos(el) * Math.sin(az), tg[1] + d * Math.sin(el), tg[2] + d * Math.cos(el) * Math.cos(az)); s.cam.lookAt(...tg);
+  draw3d(g, null, s.scene, s.cam);
+  s.hand.pose({});   // 骨骼回到静止姿势：别的镜头之后再建手时量到的是真正的静止姿势
   return {};
 }

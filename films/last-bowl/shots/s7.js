@@ -1,12 +1,14 @@
-// S7 锅口（18.0–21.0 s）—— 正俯锅口特写：接 S6 抖面——师傅的右手从画面下沿（他站的那侧）攥着一把面，头 6 帧一拍两格 3 张松手（攥 → 半张 → 张开，手往右下沿退出画，最后一张只剩手指在下沿一闪；手型见 RH），
+// S7 锅口（18.0–21.0 s）—— 正俯锅口特写：接 S6 抖面——师傅的右手从画面下沿（他站的那侧）攥着一把面，头 6 帧一拍两格 3 张松手（攥 → 半张 → 张开，手往右下沿退出画，最后一张只剩手指在下沿一闪；三渲二的手，见 masterHand），
 // 面梢先落水，接触那 2 帧出 6 片硬边水花，之后一拍两格 3 张散成水下一圈松螺旋；
 // 18.35 起锅壁边冒几小团热气（不挡面），19.5 起 cel 热气一团团不规则地翻滚着涌上来扑向镜头，20.833 起 4 帧白闪（发光板增益 ×1.5 / ×2.5 / ×4，最后一帧全白），21.0 硬切 S8。
 // 镜头：缩放 100% → 108%（ease-in，锚点锅心）。光：吊灯在左上；锅底灶火只在锅沿外露出火舌（进发光板）。灶台在案板左边：画右沿露一条同一块案板。
 // 色值：TREATMENT §4.3 锅 · 铝、§4.4 落锅 / 生面条、§9 附 1 热气。非主构图镜头，屏幕坐标直接布局。
+import * as THREE from 'three';
 import { W, H, TAU, cel, path, ribbon, line, airbrush, mix, rng, hash, canvas } from '../lib/cel.js';
 import { C } from '../pal.js';
 import { STEAM } from '../fx.js';
-import { hand, digit, part, backOfHand, FW, FWK } from '../hands.js';
+import { sun, draw3d } from '../lib3d.js';
+import { makeHand } from '../hand3d.js';
 
 const POT = C('pot'), DOUGH = C('dough'), FLOUR = '#F4EBD8';
 const WATER = { f: '#B8B8A9', s: '#564F65' }, FOAM = { f: '#FFF4DC', l: '#7E707B', s: '#D9CDBE' };
@@ -107,8 +109,9 @@ function bunch(i, tip, top, wt, wh) {
   return pts;
 }
 // 头 6 帧（一拍两格 3 张）：攥在拳里（手里那头藏在四指底下，面梢抖开、垂向锅心）→ 松手往下落（手里那头从半张的指尖下滑出去）→ 碰水
-// 每项 [面梢, 手里那头, 面梢宽, 手里宽]；手的位置见 RHK
-const FALL = [[[978, 598], [1018, 872], 230, 110], [[968, 575], [1010, 800], 240, 130], [[966, 548], [992, 700], 250, 170]];
+// 每项 [面梢, 手里那头, 面梢宽, 手里宽]；手的位置见 HK（三维的手）
+// 第 1 张的手里那头收窄、压到三维手的捏点底下（拇指和食指之间），看得出是捏着的
+const FALL = [[[978, 598], [1020, 892], 230, 56], [[968, 575], [1010, 800], 240, 130], [[966, 548], [992, 700], 250, 170]];
 function spiral(i, rot) {                                              // 水下松松的一圈螺旋
   // 每根绕的圈心各偏一点、绕的角度和松紧都不一样 → 一团乱一点的面，不是规整的风车
   const a0 = i / NS * TAU * .86 + hash(i) * .6 + rot, span = 1.5 + hash(i + 40) * 1.6, r0 = 24 + hash(i + 80) * 60, gr = 120 + 170 * hash(i + 120), pts = [];
@@ -155,47 +158,58 @@ function noodles(g, e, lt, fi, pass) {
   }
 }
 
-// —— 师傅的右手：正俯看手背。rot = 0 时前臂从下沿进、指尖朝锅心，拇指在左。锚点 = 掌心 ——
-// 同一块手背（四个掌指骨节一排，往小指一侧略低），三张只换手指，关节只往掌心（离开镜头）一侧弯 → 正俯看就是透视缩短：
-//   攥（fi 0–1）：面把从拳底垂下去。四指往远处往下扣住面把：近节透视缩短、中节往下折只露一小截骨节前面；中指露得最长、小指缩得最深；
-//     拇指贴着拳的左边往上，末节往食指一侧扣，把面把压在食指中节上
-//   半张（fi 2–3，中间张）：四指伸出一半、末节还蜷着；拇指离开食指往左打开，面从指尖底下滑出去
-//   张开（fi 4–5）：四指伸开、彼此分开（食指往左、小指往右撇），末节微蜷 = 透视略短；拇指往左打开。手往下沿退，只剩手指在下沿一闪
-const KN = [[.34, -.31], [.12, -.39], [-.10, -.41], [-.32, -.35]];   // 掌指骨节（小 → 食），手背筋络用
-// 粗剪第 3 轮：四指不再用 four() 一个角度扇开，每根各自摆（指长 × 节比、粗细同 hands.js）：
-// angs = 三节在画面上的方向（度），k = 三节各自的透视缩短（往掌心蜷 = 离开镜头 = 变短）。每个关节都带一点弯，四根角度、间距、蜷的深浅都不一样
-const FLEN = { l: .50, r: .63, m: .68, i: .62 }, PHL = [.45, .30, .25], FO = ['l', 'r', 'm', 'i'];
-const fingR3 = set => set.map(([b, angs, k], j) => digit(b, angs, PHL.map((p, q) => FLEN[FO[j]] * p * k[q]).filter(v => v > .005),
-  { w: FW * FWK[FO[j]], back: true, cal: FO[j] === 'i' ? -1 : 0, id: 70 + j })).flat();
-function dorsum() {
-  const P = part('skin', ['W', [-.46, -.34], [-.27, -.43], [-.06, -.46], [.15, -.43], [.34, -.36], [.48, -.24], [.52, .02], [.46, .32], [.36, .56, 1], [-.30, .58, 1], [-.44, .38], [-.56, .14], [-.59, -.06], [-.55, -.22]], {
-    cal: [[[-.62, -.27], [-.59, -.03], [-.53, -.07], [-.54, -.18], [-.51, -.25]]] });   // 虎口老茧：从手背只看到左边一条
-  return backOfHand(P, KN.map(([x, y]) => [x, y - .02]), [.03, .55], 21);
-}
-const thumbR = (b, angs, ls) => digit(b, angs, ls, { w: .28, nail: true, back: true, id: 31 });
-// 每根 [指根, 三节方向, 三节缩短]，小 → 食
-// 攥：四指挤在一起（指根间距比指宽还窄一点 → 互相压着）、包住面把往远处扣下去：近节透视缩短，中节顺着往锅心再露一小截（机位略斜，看得到骨节前面一点），
-//   末节藏在面把底下；骨节一排是弧（中指最远、小指最低最短、缩在无名指边上），蜷的深浅各不同；中节都往拇指一侧收（攥拳时指尖往大鱼际聚）
-const FIST = [[[.295, -.24], [-80, -100, -104], [.30, .30, 0]], [[.115, -.365], [-87, -101, -104], [.44, .33, 0]],
-  [[-.08, -.415], [-92, -104, -105], [.55, .34, 0]], [[-.30, -.36], [-103, -116, -114], [.45, .30, 0]]];
-// 半张：四指伸出一半、末节还蜷着；各自往外散开的角度不一样，小指落后最多
-const HALF = [[[.34, -.30], [-71, -77, -84], [.72, .46, .28]], [[.125, -.385], [-82, -86, -90], [.80, .54, .33]],
-  [[-.10, -.41], [-93, -92, -90], [.85, .58, .36]], [[-.32, -.35], [-105, -100, -95], [.80, .50, .30]]];
-// 张开：手指放松伸开（不绷直）：每个关节都还带一点弯（透视略短 + 往中指一侧偏几度），食指往左、小指往右撇得最多，间距不等
-const OPEN = [[[.345, -.30], [-61, -68, -76], [.90, .74, .58]], [[.12, -.39], [-79, -83, -88], [.97, .84, .70]],
-  [[-.10, -.41], [-92, -91, -89], [1, .88, .74]], [[-.33, -.345], [-108, -102, -97], [.96, .84, .70]]];
-// 拇指和四指分开：攥 = 贴着拳的左边往上、末节往食指扣（压住面把）；半张 / 张开 = 往左打开，末节仍往四指一侧微弯
-const RH = {
-  fist: () => ({ arm: { w: [.03, .57], a: 98 }, parts: [...thumbR([-.47, .12], [-104, -60], [.33, .23]), dorsum(), ...fingR3(FIST)] }),
-  half: () => ({ arm: { w: [.03, .57], a: 96 }, parts: [...thumbR([-.49, .06], [-136, -116], [.30, .22]), dorsum(), ...fingR3(HALF)] }),
-  open: () => ({ arm: { w: [.03, .57], a: 93 }, parts: [...thumbR([-.50, .04], [-153, -134], [.32, .25]), dorsum(), ...fingR3(OPEN)] }),
+// —— 师傅的右手（三渲二）：三维的手 + 前臂袖子，用和二维锅口对得上的机位渲出来，压在面上（同一个推镜 T）——
+// 世界坐标（米）：锅心在原点、锅沿平面 y = 0；X 向右，Y 向上，Z 朝师傅（画面下沿）。机位在师傅这一侧斜俯 22°（锅口椭圆纵横比 ≈ cos 22° ≈ KY），
+//   锅沿半径 0.24 m 正好落在二维的 RIM（650 px）上，锅心落在 O。吊灯在左上（同 S4 的光向），硬边投影落在水面上，不加环境光。
+// 头 6 帧一拍两格 3 张：捏（接 S6 结尾的捏法：拇指和食指、中指捏住面把上端，无名指小指蜷着）→ 半张（拇指离开、食指中指松开，面从指尖下滑出去，手往后撤）
+//   → 张开（五指松开撇开，手往右下沿退出画，只剩手指在下沿一闪）。
+const D2R = Math.PI / 180, V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+const CAM = { D: 1.0, tilt: 22 * D2R, rim: 0.24 }, FPX = RIM * CAM.D / CAM.rim;   // FPX = 焦距（px）
+// 手型（度）：四指 [张开, 掌指关节弯, 中节弯, 末节弯]；拇指 [指根张开, 指根弯, 第二节弯, 末节弯]。hold 就是 S6 结尾的 pinch
+const HP = {
+  hold: { thumb: [28, 30, 22, 14], index: [10, 46, 34, 14], middle: [2, 52, 38, 16], ring: [-6, 74, 80, 42], pinky: [-12, 78, 78, 42] },
+  half: { thumb: [28, 18, 8, 2], index: [11, 26, 16, 6], middle: [2, 30, 20, 8], ring: [-6, 56, 58, 30], pinky: [-12, 60, 60, 30] },   // 拇指尖和食指尖分开，捏口张开
+  open: { thumb: [48, 4, 2, 0], index: [14, 8, 8, 4], middle: [3, 10, 10, 5], ring: [-9, 14, 12, 6], pinky: [-18, 18, 14, 6] },
 };
-// 每两帧一张：[手型, x, y, rot]；掌宽 330（手比锅口离镜头近）。手往右下（师傅那侧）退，前臂一直在画外
-const RHK = [['fist', 1050, 990, -.22], ['half', 1068, 1052, -.25], ['open', 1088, 1170, -.28]];
+// 每张 [手型, 手背朝向, 往手腕的方向, 手相对第 1 张的位移（米）]；第 1 张的捏点对准二维面把的上端 PIN0（离镜头 PD 米）
+// 朝向接 S6 结尾：手背朝右上，从正俯看到食指一侧——食指勾下来、拇指从底下顶上去，面把夹在两个指尖之间；前臂往右下沿（师傅那侧）出画
+const PIN0 = [1018, 878], PD = 0.84, ARM = [.45, -.05, .89];
+const HK = [
+  ['hold', V3(.8, .55, .15), V3(.38, .2, .9), V3(0, 0, 0)],
+  ['half', V3(.8, .55, .15), V3(.38, .18, .9), V3(.02, .025, .055)],
+  ['open', V3(.45, .85, .2), V3(.38, .15, .91), V3(.04, .04, .11)],
+];
+function orient(o, Y, Z) {                                             // 同 S6：Y = 手背朝向、Z = 往手腕的方向（世界），X = Y × Z
+  const z = Z.clone().normalize(), y = Y.clone().addScaledVector(z, -Y.dot(z)).normalize(), x = new THREE.Vector3().crossVectors(y, z);
+  o.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+}
+const wp = (hd, n) => { const v = new THREE.Vector3(); hd.root.updateMatrixWorld(true); hd.B[n].getWorldPosition(v); return v; };
+let S3 = null;
+function setup3d() {
+  if (S3) return S3;
+  const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(2 * Math.atan(H / 2 / FPX) / D2R, W / H, 0.05, 20);
+  cam.position.set(0, CAM.D * Math.cos(CAM.tilt), CAM.D * Math.sin(CAM.tilt)); cam.lookAt(0, 0, 0);
+  cam.setViewOffset(W, H, 0, H / 2 - O[1], W, H);                     // 锅心落在 O（比画面中心高 40 px）
+  cam.updateMatrixWorld(true);
+  const catcher = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.ShadowMaterial({ color: new THREE.Color(WATER.s), opacity: .55 }));
+  catcher.rotation.x = -Math.PI / 2; catcher.position.y = -0.05; catcher.receiveShadow = true;   // 水面（比锅沿低 5 cm）收手的投影
+  catcher.userData.bg = true; catcher.material.userData.outlineParameters = { visible: false };
+  const hd = makeHand('R');
+  scene.add(catcher, hd.root, hd.arm);
+  sun(scene, [-0.55, 1.0, -0.6], 0.6, [0.05, 0, 0.15]);
+  const ray = V3(PIN0[0] / W * 2 - 1, 1 - PIN0[1] / H * 2, .5).unproject(cam).sub(cam.position).normalize();
+  const P = cam.position.clone().addScaledVector(ray, PD);
+  hd.pose(HP.hold); orient(hd.root, HK[0][1], HK[0][2]); hd.root.position.set(0, 0, 0);
+  const pm = wp(hd, 'thumb-tip').add(wp(hd, 'index-finger-tip')).multiplyScalar(.5);   // 捏点 = 拇指尖和食指尖的中点
+  return (S3 = { scene, cam, hd, root0: P.sub(pm) });
+}
 function masterHand(g, e, fi) {
   if (fi >= 6) return;
-  const [p, x, y, rot] = RHK[fi >> 1];
-  hand(g, e, { pose: RH[p], x, y, s: 330, rot, side: 'R', light: 'warm' });
+  const s = setup3d(), [p, Y, Z, d] = HK[fi >> 1];
+  s.hd.pose(HP[p]); orient(s.hd.root, Y, Z);
+  s.hd.root.position.copy(s.root0).add(d);
+  s.hd.aimArm(ARM);
+  draw3d(g, e, s.scene, s.cam);
 }
 
 // —— 接触 2 帧：6 片硬边水花 + 水珠 ——

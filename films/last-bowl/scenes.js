@@ -4,10 +4,13 @@
 // s5 = 招牌镜头，13.8 s：近景仰拍，杖横在最上方两头露出，面片像帘子挂在杖上透光（三块硬边色区 + 灯罩口暗环）；两只剪影拳握在面片外侧；
 //      背景是喷枪暗暖墙（光从面片上沿和两侧漏出，下方压暗），灯绳从下摆后面垂出；面粉在下沿和溢光带里，星芒只 1 个在灯芯上
 import { cel, poly, mix, hex, hash, airbrush, canvas, rgba, TAU, W, H } from './lib/cel.js';
-import { w2s, scale, HALO, SHADE, TABLE, OBJ, CORD, WIN, shutterH, spot } from './layout.js';
+import { w2s, scale, HALO, SHADE, TABLE, OBJ, CORD, WIN, LAMP_STREET, shutterH, spot } from './layout.js';
 import { C, BG, SIL } from './pal.js';
 import { drawTitle, titleLevel } from './title.js';
-import { hand, digit, part, FW, FWK } from './hands.js';
+import { hand, digit, part, FW } from './hands.js';
+import * as THREE from 'three';
+import { rgb, draw3d } from './lib3d.js';
+import { makeHand } from './hand3d.js';
 
 // —— CRT：从 lib/post.js 默认值起调，克制。暗角统一在 frames.js 的 POST 里压到 ≤ 25%；每张帧只覆盖少数几项 ——
 const CRT = {
@@ -72,45 +75,72 @@ function basinCheat(g, e, P, o) {
   g.restore(); e.restore();
 }
 
-// —— 拉灯的手（S1 / S13，TREATMENT §4.2 末段）：一拍两格 = 12 fps 取张；锚点 = 木珠中心 ——
-// 机位在师傅身后上方：看到右手手背，拇指在左；手掌微微朝左转（拇指一侧离镜头近），所以卷进掌心的方向在屏幕上是往左。
-// 粗剪第 3 轮（用户：手像机器结构；导演：四指平行等距像耙子、拇指像木栓、手腕前臂一根直管）：
-// · 拇指、食指捏珠：食指从上面弯过来、指肚压在木珠右上，拇指从虎口往上、指尖顶在木珠右下，木珠左大半露出来；
-// · 中、无名、小指是一只松拳：近节透视缩短、一根比一根低（台阶），中节往左收进掌心、藏到前一根手指后面；指根挨着、互相压住一点，
-//   方向、长短、弯度各不相同（中指最直最长，小指最短最弯、往外撇）；
-// · k = 捏合（1 捏住，0 松开），relax = 松手后放开。三指收拢程度 u 跟着 k / relax 走：伸过去时边走边收，松手后慢慢放开成自然的半握
-//   （每节还弯 10–20°，指尖往拇指那边聚，不是四根竖直平行）；拇指松开时贴在食指旁往左上斜，不横着支出去；
-// · 前臂（袖子）自己画：中线是一道弧（腕上往右折一点，往肘慢慢转回竖直 → 手、腕、前臂一道 S），从袖口往肘一路变粗，三道硬边折痕，伸到画框外
+// —— 拉灯的手（S1 / S13，TREATMENT §4.2 末段）：三渲二 —— 三维手（hand3d.js）+ 卡通材质两阶硬边 + 彩色描边，叠在二维的 A / A' 上 ——
+// 手按 12 fps 换张（一拍两格），锚点 = 木珠。灯绳、木珠仍是二维（props.shade 先画）；三维里放一个只写深度的球挡住木珠后面的指头 → 前后关系对。
+// 相机和 layout.w2s 完全对齐：机位 (0, 2.30, 0)、俯 40°、f = 1125 px、主点 (960, 540)。layout 的 z 朝里（左手系），three 是右手系 →
+// layout (x, y, z) → three (x, y, −z)；相机绕 X 转 −40°，竖直视角 2·atan(540 / 1125)。
+// 机位在师傅身后上方：看到右手手背，拇指在左；手掌微微朝左转（拇指一侧抬起、离镜头近）；拇指、食指指肚隔着木珠对捏，
+// 中、无名、小指一只松拳（中指最松、小指最紧）。手臂伸直：肩在画框下沿外（SHOULDER），袖子从腕往肩一路变粗，从下沿 x ≈ 760 伸进来。
+// 光：暖灯 = 灯泡处一盏不衰减的点光（跟灯摆），手和袖子的硬边投影落在台面（只收投影的平面，裁在台面范围）；
+// 灯灭 = 路灯从窗那边来的方向光，光斑外那组色（lit #4E323A / sh #341B23 / line #221113），朝窗一侧的高光阶换成雪青灰 #8C93B8 当轮廓光；手不进光斑，台面不收投影。
 const EPS = 1e-6, step12 = (t, t0) => Math.floor((t - t0) * 12 + EPS);
 const DG = Math.PI / 180, lerp = (a, b, u) => a + (b - a) * u, lerpA = (A, B, u) => A.map((a, i) => lerp(a, B[i], u));
-const HANDS = { s: 70, fa: 80, bow: 14 };   // 掌宽 px；前臂方向（本地，度；90 = 竖直往下）→ 从画面下沿 x ≈ 740 伸进来；bow：前臂中线从腕到 8.6 掌宽处转的角（度）
-const DIR = [Math.cos(HANDS.fa * DG), Math.sin(HANDS.fa * DG)];   // 屏幕上顺着前臂往外（rot = 0）
-const tipOf = (b, angs, ls) => angs.reduce((p, a, i) => [p[0] + Math.cos(a * DG) * ls[i], p[1] + Math.sin(a * DG) * ls[i]], b);
-const IDX = { b: [-.27, -.01], ls: [.279, .186, .155], open: [-101, -112, -126], shut: [-112, -150, -195] };   // 食指：近 / 中 / 远节；松开时每节还弯 11–14°
-const THB = { b: [-.46, .44], ls: [.30, .24], open: [-121, -107], shut: [-128, -98] };                         // 拇指：松开时贴着食指往左上斜
-const BEAD_L = (() => { const i = tipOf(IDX.b, IDX.shut, IDX.ls), t = tipOf(THB.b, THB.shut, THB.ls); return [(i[0] + t[0]) / 2 - .06, (i[1] + t[1]) / 2]; })();
-// 松拳的三指（中 → 小）：[指根, 粗细, 捏住时三节角, 三节可见长, 放开时三节角, 三节可见长]。指根顺着掌指骨节的弧往小指一侧低下去、间距越来越密（往远处转）
-const FIST = [
-  [[-.09, -.07], FWK.m, [-103, -158, -210], [.16, .10, .05], [-94, -104, -117], [.29, .19, .15]],
-  [[.07, -.045], FWK.r, [-92, -150, -205], [.135, .085, .04], [-84, -98, -114], [.26, .17, .13]],
-  [[.22, .02], FWK.l, [-80, -140, -198], [.105, .07, .035], [-72, -90, -110], [.20, .13, .10]],
-];
-function pinchPose(o) {
-  const k = o.k ?? 1, rl = o.relax ?? 0, fa = HANDS.fa, u = Math.max(0, 1 - Math.max(rl, (1 - k) * .6));
-  const back = part('skin', ['W', [-.40, .07], [-.31, -.03], [-.18, -.09], [-.06, -.11], [.05, -.09], [.16, -.05], [.27, .02], [.36, .12], [.43, .32], [.42, .56], [.37, .76], [.29, .93, 1],
-    [-.27, .94, 1], [-.38, .76], [-.47, .55], [-.51, .38], [-.50, .21]], {
-    cal: [[[-.51, .32], [-.48, .17], [-.41, .21], [-.44, .33]]] });   // 虎口老茧露出一条边
-  const index = digit(IDX.b, lerpA(IDX.open, IDX.shut, k), IDX.ls, { w: FW * FWK.i, back: true, cal: -1, id: 31 });
-  const thumb = digit(THB.b, lerpA(THB.open, THB.shut, k), THB.ls, { w: .27, back: true, nail: true, id: 33 });
-  const fist = FIST.map(([b, wk, GA, GL, RA, RL], i) => digit(b, lerpA(RA, GA, u), lerpA(RL, GL, u), { w: FW * wk, back: true, id: 35 + i }));
-  // 袖子（前臂）：W0 = 腕中点，中线从 fa 起、往外慢慢转 bow 度（一道弧，不是直棍）；+x = 拇指一侧（朝灯）
-  const W0 = [.01, .93], a0 = fa * DG, c = HANDS.bow * DG / 8.6;
-  const P = (t, x, sh) => { const a = a0 + c * t; return [W0[0] + (Math.sin(a) - Math.sin(a0)) / c - Math.sin(a) * x, W0[1] + (Math.cos(a0) - Math.cos(a)) / c + Math.cos(a) * x, sh]; };
-  const sleeve = part('sleeve', [P(.5, .53, 1), P(1.4, .60), P(2.5, .64), P(3.3, .61), P(4.6, .69), P(6.4, .78), P(8.6, .88, 1), P(8.6, -.80, 1), P(6.2, -.68), P(4.2, -.60),
-    P(2.9, -.55), P(2.3, -.58), P(1.2, -.56), P(.5, -.53, 1)], {
-    sh: [[P(1.0, -.30, 1), P(1.8, -.12), P(2.9, .02, 1), P(1.9, -.22)], [P(3.3, .61, 1), P(4.1, .30), P(5.4, .22, 1), P(4.0, .42)], [P(5.6, -.64, 1), P(6.6, -.30), P(8.0, -.20, 1), P(6.8, -.44)]] });
-  return { off: [-BEAD_L[0], -BEAD_L[1]], arm: { w: W0, a: fa, ww: .66 }, parts: [sleeve, ...thumb, back, ...fist.reverse().flat(), ...index] };
+const L2T = ([x, y, z]) => new THREE.Vector3(x, y, -z);
+const SHOULDER = [-0.105, 1.40, 0.38];                         // 右肩（layout，米）：投到画框下沿外，袖子从下沿 x ≈ 760 伸进来
+const BULB = [SHADE.c[0], SHADE.c[1] - 0.03, SHADE.c[2]];     // 灯泡中心：暖灯点光的位置（跟灯摆绕罩顶上方 14 cm 转）
+// 手型（度，hand3d.pose 的格式）：pinch 捏珠（食指弯成钩、指肚朝下压住木珠，三指收进掌心）、open 伸手时的 C 形、relax 松手后的自然半握。
+// pinch / open 的拇指由 solveThumb 解
+const HP = {
+  pinch: { index: [0, 26, 40, 20], middle: [2, 60, 78, 38], ring: [-3, 68, 84, 40], pinky: [-9, 74, 86, 40] },
+  open:  { index: [8, 16, 22, 10], middle: [2, 26, 34, 16], ring: [-4, 32, 40, 18], pinky: [-10, 38, 44, 18] },
+  relax: { thumb: [0, 20, 16, 10], index: [6, 30, 40, 20], middle: [2, 36, 46, 22], ring: [-3, 42, 50, 24], pinky: [-8, 48, 52, 24] },
+};
+const GAP = { pinch: 0.036, open: 0.075 };          // 拇指尖到食指尖、沿食指指肚朝向的距离（米）：捏住 = 隔一颗木珠
+const ORI = { pitch: 18, yaw: 0, roll: -50, off: [0.006, 0, 0] };   // 手相对「顺着手臂、手背朝上」的转动（度）：pitch 腕往上翘，roll 负 = 拇指一侧抬起；off：捏点在木珠右边多少米
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion();
+// 解拇指：食指摆好后，在 [张开, 指根弯, 第二节弯] 网格里找拇指尖最接近「食指尖 + 指肚朝向 × gap」的一组（手框在原点、不转）
+function solveThumb(Hn, P, gap) {
+  const B = Hn.B; let best = [1e9, 0, 0, 0];
+  for (let s = -60; s <= 60; s += 4) for (let a = -20; a <= 100; a += 4) for (const b of [0, 20, 40]) {
+    Hn.pose({ ...P, thumb: [s, a, b, 15] }); Hn.root.updateMatrixWorld(true);
+    const n = new THREE.Vector3(0, -1, 0).applyQuaternion(B['index-finger-phalanx-distal'].getWorldQuaternion(_q));
+    const d = B['thumb-tip'].getWorldPosition(_w).distanceTo(B['index-finger-tip'].getWorldPosition(_v).addScaledVector(n, gap));
+    if (d < best[0]) best = [d, s, a, b];
+  }
+  return [best[1], best[2], best[3], 15];
 }
+// 两只右手：暖灯一只、灯灭一只（hand3d 每次 makeHand 各克隆一副骨架，皮肤 / 袖子按光照上色），每帧只显示当前那只。
+// 灯灭那只：皮肤高光阶（toon 渐变贴图第 3 格 = 高光 / 亮色）改成雪青灰 #8C93B8 → 朝窗一侧一道冷轮廓光
+let H3 = null;
+function setup3() {
+  if (H3) return H3;
+  const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(2 * Math.atan(540 / 1125) / DG, W / H, 0.05, 20);
+  cam.position.set(0, 2.30, 0); cam.rotation.set(-40 * DG, 0, 0);
+  const tb = new THREE.Mesh(new THREE.PlaneGeometry(3.4, TABLE.z1 - TABLE.z0), new THREE.ShadowMaterial({ color: new THREE.Color(BG.warm.woodDark), opacity: .6 }));
+  tb.rotation.x = -Math.PI / 2; tb.position.set(0, TABLE.y + 0.0004, -(TABLE.z0 + TABLE.z1) / 2); tb.receiveShadow = true;
+  const bead = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ colorWrite: false })); bead.renderOrder = -1;
+  for (const m of [tb, bead]) { m.userData.bg = true; m.material.userData.outlineParameters = { visible: false }; }
+  const pl = new THREE.PointLight(0xffffff, 1, 0, 0); pl.castShadow = true; pl.shadow.mapSize.set(2048, 2048);
+  Object.assign(pl.shadow.camera, { near: 0.05, far: 4 }); pl.shadow.bias = -0.0005; pl.shadow.normalBias = 0.002;
+  const b0 = CORD.top.slice(), dl = new THREE.DirectionalLight(0xffffff, 1); b0[1] = CORD.bottomY;
+  const v = L2T(LAMP_STREET.map((q, i) => q - b0[i])).normalize(), at = L2T(b0);
+  dl.position.copy(at).addScaledVector(v, 3); dl.target.position.copy(at); dl.castShadow = true; dl.shadow.mapSize.set(2048, 2048);
+  Object.assign(dl.shadow.camera, { left: -.5, right: .5, top: .5, bottom: -.5, near: .5, far: 6 }); dl.shadow.bias = -0.0004; dl.shadow.normalBias = 0.002;
+  scene.add(tb, bead, pl, dl, dl.target);
+  const HW = makeHand('R', 'warm'), HO = makeHand('R', 'out'), gm = HO.mesh.material.gradientMap, F = rgb(C('skin', 'out').f), K = rgb(BG.night.snowGrey);
+  gm.image.data.set(K.map((v, i) => v / F[i]), 8); gm.needsUpdate = true;
+  HP.pinch.thumb = solveThumb(HW, HP.pinch, GAP.pinch); HP.open.thumb = solveThumb(HW, HP.open, GAP.open);
+  scene.add(HW.root, HW.arm, HO.root, HO.arm);
+  return (H3 = { scene, cam, tb, bead, pl, dl, HW, HO });
+}
+// 顺着手臂（往肩）走多少米，屏幕上才挪 px（伸进来 / 退出去都走这条线）
+function alongM(bw, px) {
+  if (!px) return 0;
+  const a = SHOULDER.map((q, i) => q - bw[i]), L = Math.hypot(...a), s0 = w2s(...bw); let lo = 0, hi = L;
+  for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2, p = w2s(...bw.map((q, j) => q + a[j] / L * m)); if (Math.hypot(p[0] - s0[0], p[1] - s0[1]) < px) lo = m; else hi = m; }
+  return lo;
+}
+const swingPt = (q, deg) => { const a = deg * DG, dx = q[0] - SHADE.c[0], dy = q[1] - PIV_Y; return [SHADE.c[0] + dx * Math.cos(a) - dy * Math.sin(a), PIV_Y + dx * Math.sin(a) + dy * Math.cos(a), q[2]]; };
 const PULL = [0.02, 0.045, 0.06];   // 木珠下拉（米）：两张 + 到底「咔」
 const SINK = 12 / scale(CORD.top[0], CORD.bottomY, CORD.top[2]);   // S13「咔」后手再沉 12 px（换成米）
 // S1：0.583 起下拉 2 张，0.75 到底「咔」，手不停直接松开 → 木珠弹回
@@ -126,33 +156,52 @@ function pullS13(t) {
   if (t < 36.875 - EPS) return PULL[2] + SINK * [0, .6, 1][Math.min(2, Math.floor((t - 36.75) * 24 + EPS))];
   return t < 36.875 + 2 / 24 - EPS ? PULL[2] * .35 : 0;
 }
-// 顺着前臂方向把锚点往外挪 px（伸进来 / 退出去都走这条线）
-const along = (b, px) => ({ x: b.x + DIR[0] * px, y: b.y + DIR[1] * px });
-// 松手：t0 那张是中间张（指尖刚离开木珠，木珠弹回），然后张开、手腕沉一点；t1 起 3 张顺着前臂从下沿退出，手指拖在后面
+// 手的一张：{ b: 锚定的木珠（世界，layout）, d: 顺着手臂往外挪的屏幕 px, k: 捏合（1 捏住，0 张开）, relax: 松手后放开, rot: 指尖往拇指那边偏（弧度，负 = 往左） }
+// 松手：t0 那张是中间张（指尖刚离开木珠，木珠弹回），然后张开、手腕沉一点；t1 起 3 张顺着手臂从下沿退出，手指拖在后面
 function release(t, t0, t1, b) {
-  if (t < t0 + 1 / 12 - EPS) return { ...b, k: .45 };
-  if (t < t1 - EPS) return { ...along(b, 5), k: 0, relax: .5 };
+  if (t < t0 + 1 / 12 - EPS) return { b, k: .45 };
+  if (t < t1 - EPS) return { b, d: 5, k: 0, relax: .5 };
   const i = Math.min(2, step12(t, t1));
-  return { ...along(b, [60, 180, 330][i]), k: 0, relax: [.7, .9, 1][i], rot: [-.03, -.07, -.11][i] };
+  return { b, d: [80, 240, 420][i], k: 0, relax: [.7, .9, 1][i], rot: [-.03, -.07, -.11][i] };   // 三维里手在台面上方 30 cm，退得慢了像按在台面上 → 比二维版退得快
 }
 function handS1(t, P) {
   if (t < .25 - EPS || t >= 1.25 - EPS) return null;
   if (t < .5 - EPS) {   // 0.25 从下沿 x ≈ 760 入画，3 张伸到木珠：指尖领先，拇指、食指边走边合成 C 形对准木珠
     const i = step12(t, .25);
-    return { ...along(P.beadPos(), [330, 150, 40][i]), k: [.2, .5, .8][i], rot: [-.10, -.05, -.02][i] };
+    return { b: P.beadPos().w, d: [330, 150, 40][i], k: [.2, .5, .8][i], rot: [-.10, -.05, -.02][i] };
   }
-  if (t < .75 - EPS) return { ...P.beadPos({ pull: pullS1(t) }), k: 1 };
-  return release(t, .75, 1, P.beadPos({ pull: PULL[2] }));   // 0.75「咔」手不停直接松开；1.0–1.25 退出
+  if (t < .75 - EPS) return { b: P.beadPos({ pull: pullS1(t) }).w, k: 1 };
+  return release(t, .75, 1, P.beadPos({ pull: PULL[2] }).w);   // 0.75「咔」手不停直接松开；1.0–1.25 退出
 }
 function handS13(t, P) {
   if (t >= 37.25 - EPS) return null;
   // 入点接 S12「手抬起」：头 2 帧手刚抬到木珠下、指头还没合上，36.083 捏住，停到 36.583（告别的那一拍）
-  if (t < 36 + 1 / 12 - EPS) return { ...along(P.beadPos(), 14), k: .78 };
-  if (t < 36.875 - EPS) return { ...P.beadPos({ pull: pullS13(t) }), k: 1 };
-  return release(t, 36.875, 37, P.beadPos({ pull: PULL[2] + SINK }));   // 36.875 松手；37.0–37.25 退出，37.25 完全出画
+  if (t < 36 + 1 / 12 - EPS) return { b: P.beadPos().w, d: 14, k: .78 };
+  if (t < 36.875 - EPS) return { b: P.beadPos({ pull: pullS13(t) }).w, k: 1 };
+  return release(t, 36.875, 37, P.beadPos({ pull: PULL[2] + SINK }).w);   // 36.875 松手；37.0–37.25 退出，37.25 完全出画
 }
-function drawHand(g, e, k, light) {
-  if (k) hand(g, e, { pose: pinchPose, x: k.x, y: k.y, s: HANDS.s, rot: k.rot ?? 0, side: 'R', light, k: k.k, relax: k.relax ?? 0, arm: .3 });
+// 画一张：cur = 此刻二维木珠的世界位置（挡板跟它走），swing = 灯摆角（暖灯点光跟着摆）
+function drawHand(g, e, k, light, cur, swing = 0) {
+  if (!k) return;
+  const S = setup3(), wm = light === 'warm', Hn = wm ? S.HW : S.HO, R = Hn.root, B = Hn.B;
+  S.HW.root.visible = S.HW.arm.visible = wm; S.HO.root.visible = S.HO.arm.visible = !wm;
+  const kk = k.k ?? 1, rl = k.relax ?? 0, P = {};
+  for (const f of ['thumb', 'index', 'middle', 'ring', 'pinky']) P[f] = lerpA(lerpA(HP.open[f], HP.pinch[f], kk), HP.relax[f], rl);
+  Hn.pose(P);
+  // 手框：Z = 顺着手臂往肩（指尖朝 −Z），Y = 手背（世界上方投到垂直于臂的平面），X = Y × Z；再按 ORI 转（rot 加到 yaw 上）
+  const A = L2T(SHOULDER).sub(L2T(k.b)).normalize(), Y = new THREE.Vector3(0, 1, 0).addScaledVector(A, -A.y).normalize(), X = new THREE.Vector3().crossVectors(Y, A);
+  R.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, A))
+    .multiply(_q.setFromEuler(new THREE.Euler((ORI.pitch + 12 * rl) * DG, ORI.yaw * DG - (k.rot ?? 0), ORI.roll * DG, 'YXZ')));   // 松手后手腕领着往回撤，手指拖在后面（往上翘，不朝台面）
+  // 位置：拇指尖、食指尖的中点 = 木珠右边 off（再顺着手臂往外挪 d px）
+  R.position.set(0, 0, 0); R.updateMatrixWorld(true);
+  const M = B['thumb-tip'].getWorldPosition(_v).add(B['index-finger-tip'].getWorldPosition(_w)).multiplyScalar(.5);
+  R.position.copy(L2T(k.b.map((q, i) => q + ORI.off[i]))).addScaledVector(A, alongM(k.b, k.d || 0)).sub(M); R.updateMatrixWorld(true);
+  Hn.aimArm(A.toArray());   // 前臂 + 袖子：从腕顺着「木珠 → 肩」那条线伸直（退出时腕会走过肩的投影点，不能再拿腕 → 肩当方向）
+  const r = Math.max(0.0125, 12 / scale(...cur));   // 挡板 = props 画的木珠（半径至少 12 px，竖向 1.08）
+  S.bead.position.copy(L2T(cur)); S.bead.scale.set(r, r * 1.08, r);
+  if (wm) S.pl.position.copy(L2T(swingPt(BULB, swing)));
+  S.pl.visible = S.tb.visible = wm; S.dl.visible = !wm;
+  draw3d(g, e, S.scene, S.cam);
 }
 
 // 灯灭的底：斑外整张 + 斑内裁进 spot(h)（c、e 两层都裁）+ 窗里的雪（裁在底杠以下的窗格里）
@@ -181,7 +230,7 @@ function darkA(t, g, e, A, pull) {
 // —— a：主构图 A（S1：0–0.75 灯灭色，0.75「咔」一帧重画成暖灯，灯摆 ±4° 三次衰减；手 0.25 入画、0.50 握珠、1.25 出画） ——
 function frameA(t, g, e, A) {
   const { props: P, fx: F, plates: PL } = A.mods;
-  if (t < .75 - EPS) { darkA(t, g, e, A, pullS1(t)); drawHand(g, e, handS1(t, P), 'out'); return CRT.a2; }
+  if (t < .75 - EPS) { darkA(t, g, e, A, pullS1(t)); drawHand(g, e, handS1(t, P), 'out', P.beadPos({ pull: pullS1(t) }).w); return CRT.a2; }
   const swing = swingS1(t), o = { light: 'warm', swing };
   const dx = haloDx(swing);
   PL.drawWarmA(g, e, A, dx);
@@ -193,7 +242,7 @@ function frameA(t, g, e, A) {
   // 碗摞（第 5 轮导演：套得更紧）：碗沿间距减半 —— 摞高 = 一只碗高 + 原间距总和的一半
   P.bowl(g, e, { ...o, at: 'A', H: OBJ.bowlA2.h + (OBJ.stackA.h - OBJ.bowlA2.h) / 2 });
   P.shade(g, e, { ...o, pull: pullS1(t) });
-  drawHand(g, e, handS1(t, P), 'warm');
+  drawHand(g, e, handS1(t, P), 'warm', P.beadPos({ ...o, pull: pullS1(t) }).w, swing);
   return CRT.a;
 }
 
@@ -333,7 +382,7 @@ function shadeDark(g, e, P, so, k) {
 // —— a2：主构图 A'（S13：36.0 暖灯版 → 36.75「咔」灯灭 → 38.625 卷帘门落下 → 39.75 落定，屋里全黑 → 40.5 片名） ——
 function frameA2(t, g, e, A) {
   const { props: P, fx: F, plates: PL } = A.mods, h = shutterH(t), pull = pullS13(t);
-  if (t < 36.75 - EPS) { warmA2(t, g, e, A, pull); drawHand(g, e, handS13(t, P), 'warm'); return CRT.a; }
+  if (t < 36.75 - EPS) { warmA2(t, g, e, A, pull); drawHand(g, e, handS13(t, P), 'warm', P.beadPos({ pull }).w); return CRT.a; }
   darkBase(g, e, A, t, h);
   // 卷帘门：画在窗里（窗外的雪之后、窗外的手和台面道具之前；灯罩灯绳在窗前，最后画）；下落时竖向拖影 ≤ 16 px，越落越慢
   const u = (t - 38.625) / 1.125;
@@ -352,7 +401,7 @@ function frameA2(t, g, e, A) {
   const k = roomDark(t, h), so = { light: 'dark', cordSwing: cordSwingS13(t), pull };
   if (k > 0) { darken(g, k, [F.winPanes(WIN.y1), tm, rim]); shadeDark(g, e, P, so, k); }
   else P.shade(g, e, so);
-  drawHand(g, e, handS13(t, P), 'out');
+  drawHand(g, e, handS13(t, P), 'out', P.beadPos(so).w);
   if (t >= 40.5 - EPS) {
     // 片名的光微微照亮门板（只在窗格里），再画片名
     if (titleLevel(t)) { g.save(); g.clip(F.winPanes(WIN.y1)); airbrush(g, 960, 320, 560, 210, BG.night.lampGold, .1, 1); g.restore(); }
@@ -433,20 +482,24 @@ function s5Cord(g, e, PL, dy, lamp, L) {
   return [top, [x, by]];
 }
 
+// 三渲二（2026-11-05）：杖和两只拳头 + 前臂袖子换成三维（shots/s5.js；2D 版备份在 shots/s5_2d.js）。面皮、灯、灯绳木珠、背景墙仍是 2D
+import * as S5R from './shots/s5.js';
 function frameS5(t, g, e, A) {
   // 2026-11-05 用户：举面皮时「灯跟着动」不对 → 取消上摇（原 dy = s5Shift(t, PL.S5C.shift)），固定机位：灯在画面上不动，只有面皮、杖、手从灯前举起
-  const { props: P, hands: HD, fx: F, plates: PL } = A.mods, dy = 0, [mx, my] = s5Lift(t), dd = dy + S5DN + my, L = P.S5;
+  const { props: P, fx: F, plates: PL } = A.mods, dy = 0, [mx, my] = s5Lift(t), dd = dy + S5DN + my, L = P.S5;
   const lamp = [A.plateS5.lamp[0], A.plateS5.lamp[1] + S5LAMP], B = s5Plate(lamp, PL.S5C.shift);
   const LP = [lamp[0], lamp[1] + S5DN + S5LIFT.low + dy];   // 灯芯中心（屏幕）：钉在屋里，只跟上摇
   // 0) 背景板（下移 dy，不跟 S5DN）+ 灯绳木珠（从罩口环垂下来，同样钉在屋里）
   g.drawImage(B.c, 0, dy); e.drawImage(B.e, 0, dy);
   const cord = s5Cord(g, e, PL, dy + S5DN, LP, L);
-  // 1) 面片 + 杖（跟着举起 / 晃 mx my）：灯芯、浅金区写进发光板，厚边、灯的透影、杖印黑；灯芯 / 罩口环 / 灯绳透影按 LP 画、裁进面片
-  const D = P.doughBacklit(g, e, { t, dx: mx, dy: dd, lamp: LP, ldy: 0, cord });
+  // 1) 面片 + 三维杖（跟着举起 / 晃 mx my）：灯芯、浅金区写进发光板，厚边、灯的透影、杖印黑；灯芯 / 罩口环 / 灯绳透影按 LP 画、裁进面片
+  //    S5R.rig 先按杖轴屏幕点摆好三维杖和手，返回杖投影半径 → doughBacklit 的卷边 / 压痕对齐三维杖；杖由 doughBacklit 在卷边之前回调 S5R.pin 渲
+  const R5 = S5R.rig({ x: L.cx + mx, y: L.top + dd, t });
+  const D = P.doughBacklit(g, e, { t, dx: mx, dy: dd, lamp: LP, ldy: 0, cord, r: R5.r, pin: S5R.pin });
   // 2) 面粉：在屋里飘（扣掉面片自己的位移 → 不粘在面片上），面片挡着的不画，一半进发光板闪；星芒只在发光板、在灯芯上
   F.flourMotes(g, e, t, { edge: D.edge, off: [-mx, -my], n: 26, exclude: D.sheet, glint: D.core });
-  // 3) 两只拳头 + 前臂 + 袖卷：握点跟杖一起举、一起晃；剪影套 + 3 px 暖金轮廓光，剪影印进发光板；袖卷压到画面下角（y > 800）
-  HD.s5Hands(g, e, { grips: L.grips.map(([x, y]) => [x + mx, y]), cx: L.cx + mx, dy: dd, t, fore: S5ARM.fore, armA: S5ARM.armA });
+  // 3) 两只三维拳头 + 前臂袖子（最前）：握点跟杖一起举、一起晃；剪影套 + 2–3 px 暖金轮廓光，剪影印进发光板
+  S5R.fists(g, e);
   return CRT.s5;
 }
 

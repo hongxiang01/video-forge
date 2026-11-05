@@ -1,231 +1,268 @@
-// S12（33.0–36.0）中近景 · 正俯：师傅在近侧，右手从画面下沿拿湿布进来，四指扣布、掌根压着，顺一道弧把散开的面粉擦出一条干净的湿带
-// → 34.5 松开扣布的四指、掌放平 → 34.875 拇指顺木纹抹一下 → 手在木纹上多停一拍 → 35.75 起 3 张把布攥起、往下沿抬出画（TREATMENT §4 S12、§5；CONTINUITY S11→S12、S12→S13）。粗剪第 2 轮。
-// 机位正俯：画面下方 = 师傅那一侧（手和袖子从下沿进），上方 = 窗那一侧；木板横向铺、木纹横走；吊灯在左上，光从左上来。
-// 弧带和 A' 的湿布弧痕对上：镜头停稳后屏幕上从 (435, 922) 兜到 (1294, 746)、拱向近侧；起笔在左下（布按下去），收笔在右上（布从这里离开台面），和 props.wipe 同一个方向。
-// 跟摇：33.0–34.5 跟着布往右摇 300 px（ease-in-out，每帧动）→ 台面内容左移 300 px（顺着 S11 碗往左端走的方向）。手和布按 12 fps 换张。
-// 开头：碗刚端走的地方留一圈淡淡的碗底水印（S11 的碗），在弧的路上，布擦过去就没了。
-import { canvas, cel, path, ribbon, airbrush, mix, rgba, rng, hash, W, H, TAU } from '../lib/cel.js';
+// S12（33.0–36.0）中近景 · 斜俯 · 三渲二（TREATMENT §4 S12、§5 33.00–36.00；CONTINUITY S11→S12、S12→S13）。2D 版原样备份在 s12_2d.js。
+// 师傅在近侧，右手从画面下沿拿湿布进来，四指扣布、掌根压着，顺一道弧把散开的面粉擦出一条干净的湿带
+// → 34.5 手离开布、放平在擦净的木头上 → 34.917 起拇指顺木纹抹一下 → 多停一拍 → 35.75 起 3 张捏起布角、往下沿抬出画（布一起带走，A' 里台面上没有布）。
+// 世界坐标（米）：X 向右，Y 向上，Z 朝镜头（师傅这一侧）；台面 y = 0。台面（木板 + 面粉 + 碗底水印 + 擦出的湿弧带）画在一张 CanvasTexture 上，
+// 弧带按布的位置逐帧擦出来；布（有厚度、有褶、左后拖一个布角）、手、前臂和袖子是三维的（lib3d 卡通材质 + 彩色描边），
+// 一盏白色方向光（吊灯在左上），硬边投影落在布和台面上，不加环境光。弧和 A' 的湿布弧痕同向：起笔左近、收笔右远、拱向近侧。
+// 机位斜俯 58°，33.0–34.5 跟着布往右移（ease-in-out），之后极慢地再漂一点；镜头每帧动，手和布按 12 fps 换张。
+import * as THREE from 'three';
+import { canvas, cel, path, ribbon, airbrush, mix, rgba, rng, hash, TAU } from '../lib/cel.js';
 import { C, BG, LIGHT } from '../pal.js';
-import { hand, digit, part, backOfHand, FW, FWK } from '../hands.js';
+import { toon, sun, draw3d, renderer } from '../lib3d.js';
+import { makeHand } from '../hand3d.js';
 
-const PAN = 300, OX = 340, TW = W + 2 * OX;            // 台面板比画面宽，左右各多 340 px
-const S = 200;                                         // 掌宽（§4.2：S12 = 200 px，描边 2.0）
-const ARC = { a: [735, 922], c: [1136, 966], b: [1594, 746], w: 190 };   // 擦痕弧（台面坐标 = 停稳后的屏幕坐标 + 300）
-const SHOULDER = [1700, 1900];                          // 师傅右肩（台面坐标，画外下方偏右）：前臂朝它伸出去
-const LD = [-.8, -.6];                                 // 屏幕上朝灯的方向（吊灯在左上）
-const WD = BG.warm, CL = C('cloth'), FL = C('flour'), CLS = mix(CL.f, CL.s, .5);
+const WD = BG.warm, FL = C('flour'), D2R = Math.PI / 180;
 const io = u => u < .5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
-const q12 = t => Math.floor(t * 12 + 1e-6) / 12;
 const lerp = (a, b, m) => a + (b - a) * m;
-const D = a => a * Math.PI / 180;
-const at = u => { const { a, c, b } = ARC; return [(1 - u) ** 2 * a[0] + 2 * u * (1 - u) * c[0] + u * u * b[0], (1 - u) ** 2 * a[1] + 2 * u * (1 - u) * c[1] + u * u * b[1]]; };
+const cl = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const sst = (a, b, v) => { const u = cl((v - a) / (b - a)); return u * u * (3 - 2 * u); };
+const norm2 = (x, z) => { const L = Math.hypot(x, z) || 1; return [x / L, z / L]; };
+const rot = (th, x, z) => [x * Math.cos(th) + z * Math.sin(th), -x * Math.sin(th) + z * Math.cos(th)];   // 绕 Y 转 th（和手的 rotation.y 一致）
+const segD = (px, pz, ax, az, bx, bz) => { const vx = bx - ax, vz = bz - az, u = cl(((px - ax) * vx + (pz - az) * vz) / (vx * vx + vz * vz)); return Math.hypot(px - ax - vx * u, pz - az - vz * u); };
+
+// —— 擦痕弧（台面，米：[x, z]）：起笔左近 → 收笔右远，拱向近侧（同 2D 版、同 A'）——
+const ARC = { a: [-0.195, 0.037], c: [-0.013, 0.057], b: [0.195, -0.043], w: 0.088 };
+const at = u => { const { a, c, b } = ARC; return [0, 1].map(i => (1 - u) ** 2 * a[i] + 2 * u * (1 - u) * c[i] + u * u * b[i]); };
 const tan = u => { const { a, c, b } = ARC; return Math.atan2(2 * (1 - u) * (c[1] - a[1]) + 2 * u * (b[1] - c[1]), 2 * (1 - u) * (c[0] - a[0]) + 2 * u * (b[0] - c[0])); };
-const aim = (x, y) => Math.atan2(-(SHOULDER[0] - x), SHOULDER[1] - y);   // 前臂（本地 +y）指向肩膀的 rot
-const toS = (x, y) => { const dx = SHOULDER[0] - x, dy = SHOULDER[1] - y, L = Math.hypot(dx, dy); return [dx / L, dy / L]; };
-const RING = { c: (p => [p[0] + 6, p[1] - 12])(at(.42)), r: 78 };   // 碗底水印：在弧的路上
+const RING = { c: (p => [p[0] + 0.003, p[1] - 0.006])(at(.42)), r: 0.036 };   // 碗底水印：在弧的路上，布擦过去就没了
+const E0 = [0.27, 0.17, 0.50];   // 肘（世界）：前臂从右近侧低低地伸进来，一直伸出画框
 
-// —— 手型（右手、手背朝上；本地坐标：掌宽 = 1，y 向下，前臂从 +y 来；拇指在 −x，小指在 +x）——
-// 一组数一个手型：四指（小 → 食）各 [根节角, 中节角, 末节角, 根节长系数, 中节长系数, 末节长系数]；拇指 [根节角, 末节角, 根节长, 末节长]；a = 前臂方向（本地，度）
-// 正俯看，手指往掌心弯 = 往台面里扣：一节节变短（透视缩短），同时往中指那边收（屈指时指尖往一处聚）；
-// 第 3 轮（不像机械臂）：指根不等距（食–中宽、无–小窄，小指根低一截）；每根手指每个关节都带一点弯（4–9°，各不相同，老人手微微往小指一侧偏），
-// 四指张开的角度不等差；每根蜷的程度不一样（食指最直、小指最蜷）；手腕有角度：前臂不顺着手的中轴，腕往小指一侧折（a < 90）
-const FBASE = [[.33, -.36], [.13, -.47], [-.10, -.51], [-.34, -.44]];
-const FLEN = [[.225, .15, .125], [.2835, .189, .1575], [.306, .204, .17], [.279, .186, .155]];
-const FID = ['l', 'r', 'm', 'i'];
-const HP = {
-  // 扣布擦：掌根压住布往前推；四指并拢扣进布里（相邻手指贴着、指尖往一处聚），近节平贴、中末节往下扣（缩短），食指最直、小指最蜷；
-  // 拇指和四指分开：顺着布的左沿往前压，末节往食指那边收；腕往小指一侧折（前臂从右下来、手往前推；a 在 beat 里随弧从 76 走到 84，这里的 80 只是名义值）
-  scrub: { f: [[-75, -82, -91, .95, .6, .36], [-85, -89, -94, 1, .7, .45], [-93, -89, -85, 1, .78, .52], [-101, -95, -89, 1, .85, .62]], th: [-127, -111, .36, .23], a: 80 },
-  // 掌放平：四指松开、自然张开一点（张角 8° / 7° / 11°，不等差），指尖轻贴台面（中末节微缩）；拇指往外打开、末节微微往食指收
-  // 每根蜷得不一样：食指最舒展，无名指、小指指尖往下扣得多一点（更短）
-  flat: { f: [[-74, -80, -87, .96, .85, .74], [-85, -88, -92, 1, .9, .8], [-92, -88, -84, 1, .93, .85], [-100, -94, -90, 1, .96, .9]], th: [-134, -127, .36, .235], a: 84 },
-  // 攥布抬起：四指收拢把布攥住，指尖往掌心回勾（只剩近节和一点中节），拇指压到食指旁
-  grab: { f: [[-79, -88, -100, .82, .45, .18], [-86, -91, -99, .86, .5, .2], [-92, -94, -98, .9, .55, .22], [-99, -96, -95, .92, .6, .26]], th: [-118, -98, .34, .2], a: 86 },
-};
-// 拇指顺木纹抹（34.875 起）：四张，指腹贴着木头往外（−x）滑，末节受力微微往后翘
-const THUMB = [[-134, -127, .36, .235], [-142, -139, .36, .24], [-150, -150, .36, .245], [-157, -160, .36, .25]];
-const TB = [-.44, .17];   // 拇指根：靠腕的桡侧角（拇指从腕边长出来，不是从掌边插出去的木栓）
-const mixP = (A, B, m) => ({ f: A.f.map((r, i) => r.map((v, j) => lerp(v, B.f[i][j], m))), th: A.th.map((v, j) => lerp(v, B.th[j], m)), a: lerp(A.a, B.a, m) });
-const rotAt = (x, y, P) => aim(x, y) + D(90 - P.a);   // 前臂（本地 a 方向）指向肩膀 → 手的 rot
-const tipsOf = P => P.f.map((r, i) => {   // 四根手指的指尖（本地）
-  let [x, y] = FBASE[i]; for (let j = 0; j < 3; j++) { x += Math.cos(D(r[j])) * FLEN[i][j] * r[3 + j]; y += Math.sin(D(r[j])) * FLEN[i][j] * r[3 + j]; }
-  return [x, y];
-});
-const thumbTip = th => [TB[0] + Math.cos(D(th[0])) * th[2] + Math.cos(D(th[1])) * th[3], TB[1] + Math.sin(D(th[0])) * th[2] + Math.sin(D(th[1])) * th[3]];
-function pose(P) {   // 一组数 → hand() 的手型函数
-  return () => {
-    // 掌（手背）：桡侧不再鼓出一大块盖住拇指（那样拇指只露半截、像插在掌边的木栓）。拇指压在掌下、根在腕边：
-    // 掌的桡侧边从腕角顺着拇指外沿的方向走到拇指根（L），在拇指根上横过去（这一段 hand() 不描边，见 rz），从拇指内沿（M）起收成一道虎口弯、上到食指根
-    // → 腕—拇指外沿是一条连着的线，拇指和食指之间是一个 V 形虎口
-    const d0 = [Math.cos(D(P.th[0])), Math.sin(D(P.th[0]))], n0 = [-d0[1], d0[0]], at2 = (t, x) => [TB[0] + d0[0] * t + n0[0] * x, TB[1] + d0[1] * t + n0[1] * x];
-    // 拇指收得越拢（往食指靠），虎口的肉（第一背侧骨间肌）鼓得越高，把拇指和食指之间的缝填上 —— 不留一道细长的缝
-    const bg = .035 + .045 * Math.min(1.2, Math.max(0, (P.th[0] + 140) / 20));
-    const L = at2(-.02, -.145), M = at2(.12, .145), IC = [-.47, -.42], web = k => [M[0] + (IC[0] - M[0]) * k - bg * Math.sin(Math.PI * k), M[1] + (IC[1] - M[1]) * k];
-    const palm = part('skin', ['W', IC, [-.28, -.50], [-.08, -.54], [.13, -.52], [.34, -.46], [.49, -.34], [.53, -.04], [.47, .30], [.37, .54, 1], [-.31, .56, 1],
-      [-.31 + (L[0] + .31) * .5 - .02, .56 + (L[1] - .56) * .5], L, at2(-.1, 0), M, web(.33), web(.66)], {
-      cal: [[web(.25), web(.8), [web(.8)[0] + .06, web(.8)[1]], [web(.25)[0] + .05, web(.25)[1] + .02]].map(p => [p[0] - .02, p[1]])] });   // 虎口老茧：贴着虎口边一窄条
-    backOfHand(palm, FBASE.map(([x, y]) => [x + .01, y - .02]), [.02, .50], 4);
-    const thumb = digit(TB, [P.th[0], P.th[1]], [P.th[2], P.th[3]], { w: .28, nail: true, back: true, id: 23 });
-    const fing = P.f.map((r, i) => digit(FBASE[i], r.slice(0, 3), FLEN[i].map((l, j) => l * r[3 + j]), { w: FW * FWK[FID[i]], nail: true, back: true, id: 40 + i, cal: FID[i] === 'i' ? -1 : 0 })).flat();
-    // 拇指根上那一段掌边不描边，但掌的受光高光带还沿着它画了一道浅弧 → 一小块平涂皮色盖住（不描边、不做明暗），拇指根和手背接成一片
-    const joint = part('skin', [at2(0, -.12), at2(-.09, -.12), at2(-.17, -.01), at2(-.05, .13), at2(.05, .13), at2(-.06, 0)], { so: 0, ho: 0, lw: .001 });
-    return { arm: { w: [.03, .53], a: P.a }, parts: [...thumb, palm, joint, ...fing] };
-  };
-}
-
-// —— 台面板：暖灯木板（光池在左上，右边落进暗部）；横走木纹、板缝、几个木节 ——
+// —— 台面贴图：KP px / 米；2D 版的像素尺寸 × k 搬过来（2D 版掌宽 200 px ≈ 9 cm）——
+const KP = 2000, X0 = -0.85, Z0 = -0.62, PW = 1.7, PH = 1.0, TW = PW * KP, TH = PH * KP, k = KP / 2200;
+const P = (x, z) => [(x - X0) * KP, (z - Z0) * KP];
 function tablePlate() {
-  const [c, g] = canvas(TW, H); g.translate(OX, 0);
-  g.fillStyle = WD.wood; g.fillRect(-OX, 0, TW, H);
-  airbrush(g, 820, 380, 1500, 1050, WD.woodHalo, .95, .85);
-  airbrush(g, 2350, 700, 900, 900, WD.woodDark, .7, .9);
-  const R = rng(1201);
-  for (let k = 0; k < 6; k++) {
-    const y0 = -150 + k * 240;
+  const [c, g] = canvas(TW, TH), R = rng(1201);
+  g.fillStyle = WD.wood; g.fillRect(0, 0, TW, TH);
+  airbrush(g, ...P(-0.30, -0.30), 0.78 * KP, 0.52 * KP, WD.woodHalo, .95, .85);   // 吊灯在左上：光池在左远
+  airbrush(g, ...P(0.62, 0.14), 0.45 * KP, 0.45 * KP, WD.woodDark, .7, .9);       // 右近落进暗部
+  const bw = 240 * k;
+  for (let y0 = -0.02 * KP; y0 < TH; y0 += bw) {
     for (let j = 0; j < 9; j++) {
-      const yy = y0 + 20 + j * 24 + R() * 10, ph = R() * TAU, amp = 4 + R() * 9, wl = 500 + R() * 600;
-      g.strokeStyle = rgba(WD.grain, .35 + R() * .3); g.lineWidth = 1.4 + R() * 1.4; g.beginPath();
-      for (let x = -OX; x <= W + OX; x += 24) { const y = yy + amp * Math.sin(x / wl * TAU + ph); x === -OX ? g.moveTo(x, y) : g.lineTo(x, y); }
+      const yy = y0 + (20 + j * 24 + R() * 10) * k, ph = R() * TAU, amp = (4 + R() * 9) * k, wl = (500 + R() * 600) * k;
+      g.strokeStyle = rgba(WD.grain, .35 + R() * .3); g.lineWidth = (1.4 + R() * 1.4) * k; g.beginPath();
+      for (let x = 0; x <= TW + 24; x += 24) { const y = yy + amp * Math.sin(x / wl * TAU + ph); x ? g.lineTo(x, y) : g.moveTo(x, y); }
       g.stroke();
     }
-    if (R() < .7) { const kx = -200 + R() * 2200, ky = y0 + 60 + R() * 120; g.strokeStyle = rgba(WD.grain, .6); g.lineWidth = 2;
-      for (let r = 0; r < 3; r++) { g.beginPath(); g.ellipse(kx, ky, 46 - r * 13, 11 - r * 3, 0, 0, TAU); g.stroke(); } }
-    g.fillStyle = rgba(WD.woodDark, .55); g.fillRect(-OX, y0 + 236, TW, 9);
-    g.fillStyle = WD.grain; g.fillRect(-OX, y0 + 234, TW, 3);
-    g.fillStyle = rgba(mix(WD.woodHalo, LIGHT.warm, .4), .5); g.fillRect(-OX, y0 + 231, TW, 2);
+    if (R() < .7) { const kx = R() * TW, ky = y0 + (60 + R() * 120) * k; g.strokeStyle = rgba(WD.grain, .6); g.lineWidth = 2 * k;
+      for (let r = 0; r < 3; r++) { g.beginPath(); g.ellipse(kx, ky, (46 - r * 13) * k, (11 - r * 3) * k, 0, 0, TAU); g.stroke(); } }
+    g.fillStyle = rgba(WD.woodDark, .55); g.fillRect(0, y0 + 236 * k, TW, 9 * k);
+    g.fillStyle = WD.grain; g.fillRect(0, y0 + 234 * k, TW, 3 * k);
+    g.fillStyle = rgba(mix(WD.woodHalo, LIGHT.warm, .4), .5); g.fillRect(0, y0 + 231 * k, TW, 2 * k);
   }
   return c;
 }
-// —— 面粉层：散开的粉——沿弧一带撒开（横向近似高斯），几十小撮碎边粉 + 上千粒小粉点；碗底那一圈是空的（碗刚在那儿立着）——
-const blob = (x, y, r, sd, sq = 1) => { const p = [], n = 9 + Math.floor(hash(sd) * 6); for (let i = 0; i < n; i++) { const a = i / n * TAU + hash(sd + i) * .5, k = .5 + .6 * hash(sd + i * 1.9); p.push([x + Math.cos(a) * r * k, y + Math.sin(a) * r * k * sq, hash(sd + i * 2.3) < .55 ? 1 : 0]); } return p; };
+// 面粉层：沿弧一带撒开（横向近似高斯），薄粉层 + 几小堆 + 上千粒散粉；碗底那一圈是空的（碗刚在那儿立着）
+const blob = (x, y, r, sd, sq = 1) => { const p = [], n = 9 + Math.floor(hash(sd) * 6); for (let i = 0; i < n; i++) { const a = i / n * TAU + hash(sd + i) * .5, q = .5 + .6 * hash(sd + i * 1.9); p.push([x + Math.cos(a) * r * q, y + Math.sin(a) * r * q * sq, hash(sd + i * 2.3) < .55 ? 1 : 0]); } return p; };
 function flourPlate() {
-  const [c, g] = canvas(TW, H); g.translate(OX, 0);
-  const R = rng(3303), near = sp => { const u = -.12 + R() * 1.24, p = at(u), n = tan(u) + Math.PI / 2, d = (R() + R() + R() - 1.5) * sp; return [p[0] + Math.cos(n) * d, p[1] + Math.sin(n) * d]; };
-  const free = (x, y, r) => Math.hypot(x - RING.c[0], y - RING.c[1]) > RING.r + 16 + r;
-  // 薄粉层：几百个小团在离屏上满涂成一片（外沿碎边），再按透明度压上来 → 一层平涂的薄粉，木纹隐约透出来；两层叠出中间厚、边上薄
+  const [c, g] = canvas(TW, TH), R = rng(3303);
+  const near = sp => { const u = -.12 + R() * 1.24, p = at(u), n = tan(u) + Math.PI / 2, d = (R() + R() + R() - 1.5) * sp; return P(p[0] + Math.cos(n) * d, p[1] + Math.sin(n) * d); };
+  const [rx, ry] = P(...RING.c), rr = RING.r * KP, free = (x, y, r) => Math.hypot(x - rx, y - ry) > rr + 16 * k + r;
   const dust = (n, sp, r0, r1, a, sd) => {
-    const [dc, dg] = canvas(TW, H); dg.translate(OX, 0); dg.fillStyle = FL.f;
-    for (let i = 0; i < n; i++) { const [x, y] = near(sp), r = r0 + (r1 - r0) * R() ** 1.5; if (free(x, y, r * .5)) dg.fill(path(blob(x, y, r, sd + i * 3.7, .55 + .4 * R()), true, .5)); }
-    g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = a; g.drawImage(dc, 0, 0); g.restore();
+    const [dc, dg] = canvas(TW, TH); dg.fillStyle = FL.f;
+    for (let i = 0; i < n; i++) { const [x, y] = near(sp), r = (r0 + (r1 - r0) * R() ** 1.5) * k; if (free(x, y, r * .5)) dg.fill(path(blob(x, y, r, sd + i * 3.7, .55 + .4 * R()), true, .5)); }
+    g.globalAlpha = a; g.drawImage(dc, 0, 0); g.globalAlpha = 1;
   };
-  dust(900, 125, 7, 26, .48, 900);
-  dust(420, 72, 5, 18, .5, 2900);
-  for (let i = 0; i < 34; i++) {   // 几小堆没撒开的粉：小、碎边，背光一侧（右下）一道硬边影
-    const [x, y] = near(80), r = 3 + 8 * R() ** 2;
-    if (free(x, y, r)) cel(g, blob(x, y, r, 50 + i * 7.3, .6 + .3 * R()), { f: FL.f, s: mix(FL.f, FL.s, .5), so: [-2, -2] });
-  }
-  g.fillStyle = FL.f;   // 散粒：外沿一圈越往外越稀
-  for (let i = 0; i < 1700; i++) { const [x, y] = near(215), r = .8 + 2.2 * R() ** 2; if (free(x, y, 0)) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); } }
+  dust(900, 0.057, 7, 26, .48, 900);
+  dust(420, 0.033, 5, 18, .5, 2900);
+  for (let i = 0; i < 34; i++) { const [x, y] = near(0.036), r = (3 + 8 * R() ** 2) * k; if (free(x, y, r)) cel(g, blob(x, y, r, 50 + i * 7.3, .6 + .3 * R()), { f: FL.f, s: mix(FL.f, FL.s, .5), so: [-2, -2] }); }
+  g.fillStyle = FL.f;
+  for (let i = 0; i < 1700; i++) { const [x, y] = near(0.098), r = (.8 + 2.2 * R() ** 2) * k; if (free(x, y, 0)) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); } }
   return c;
 }
-let PLT = null;
-const plates = () => PLT || (PLT = { table: tablePlate(), flour: flourPlate() });
-
-// 擦过的弧带（台面坐标）：0 … u 一段，起笔钝圆（布按下去），两边随布褶不规则起伏
+// 擦过的弧带（贴图 px）：0 … u 一段，起笔钝圆（布按下去），两边随布褶不规则起伏
 function swept(u) {
   const sp = [], n = Math.max(2, Math.round(u * 48));
-  for (let i = 0; i <= n; i++) sp.push(at(u * i / n));
-  return path(ribbon(sp, s => ARC.w * Math.min(1, Math.sqrt(s * u / .03 + .1)) * (.9 + .05 * Math.sin(s * u * 31) + .06 * hash(Math.round(s * u * 48)))), true, .5);
+  for (let i = 0; i <= n; i++) sp.push(P(...at(u * i / n)));
+  return path(ribbon(sp, s => ARC.w * KP * Math.min(1, Math.sqrt(s * u / .03 + .1)) * (.9 + .05 * Math.sin(s * u * 31) + .06 * hash(Math.round(s * u * 48)))), true, .5);
 }
-// 布推到两边的一道粉埂：沿弧两侧一小撮一小撮（有断口），只画擦过的那段
-function berm(g, u) {
+function berm(g, u) {   // 布推到两边的一道粉埂：一小撮一小撮（有断口），只画擦过的那段
   for (let i = 0; i < 70; i++) {
     const s = i / 70; if (s > u - .02) break;
     for (const sd of [-1, 1]) {
       if (hash(i * 3.1 + sd) < .3) continue;
-      const p = at(s), n = tan(s) + Math.PI / 2, d = ARC.w * .5 * (.92 + .1 * hash(i + sd * 7)) + 4 + 6 * hash(i * 1.3 + sd), r = 3 + 6 * hash(i * 5.7 + sd);
-      cel(g, blob(p[0] + Math.cos(n) * d * sd, p[1] + Math.sin(n) * d * sd, r, 300 + i * 11 + sd, .7), { f: FL.f, s: mix(FL.f, FL.s, .5), so: [-2, -2] });
+      const p = at(s), n = tan(s) + Math.PI / 2, d = ARC.w * .5 * (.92 + .1 * hash(i + sd * 7)) + (4 + 6 * hash(i * 1.3 + sd)) / 2200, r = (3 + 6 * hash(i * 5.7 + sd)) * k;
+      const [x, y] = P(p[0] + Math.cos(n) * d * sd, p[1] + Math.sin(n) * d * sd);
+      cel(g, blob(x, y, r, 300 + i * 11 + sd, .7), { f: FL.f, s: mix(FL.f, FL.s, .5), so: [-2, -2] });
     }
   }
 }
-// 碗底水印：一圈淡淡的湿木头（一处断口：碗是斜着端起来的），朝灯一侧一道细水光
-function ring(g) {
-  const [x, y] = RING.c, r = RING.r;
+function ring(g) {   // 碗底水印：一圈淡淡的湿木头（一处断口：碗是斜着端起来的），朝灯一侧一道细水光
+  const [x, y] = P(...RING.c), r = RING.r * KP;
   g.lineCap = 'round';
-  g.strokeStyle = rgba(WD.woodDark, .3); g.lineWidth = 10; g.beginPath(); g.arc(x, y, r, .5, .5 + TAU * .9); g.stroke();
-  g.strokeStyle = rgba(WD.woodDark, .14); g.lineWidth = 6; g.beginPath(); g.arc(x + 3, y + 2, r - 11, 0, TAU); g.stroke();
-  g.strokeStyle = rgba(mix(WD.woodHalo, LIGHT.warm, .55), .55); g.lineWidth = 2.5; g.beginPath(); g.arc(x, y, r - 4, 3.5, 4.9); g.stroke();
+  g.strokeStyle = rgba(WD.woodDark, .3); g.lineWidth = 10 * k; g.beginPath(); g.arc(x, y, r, .5, .5 + TAU * .9); g.stroke();
+  g.strokeStyle = rgba(WD.woodDark, .14); g.lineWidth = 6 * k; g.beginPath(); g.arc(x + 3 * k, y + 2 * k, r - 11 * k, 0, TAU); g.stroke();
+  g.strokeStyle = rgba(mix(WD.woodHalo, LIGHT.warm, .55), .55); g.lineWidth = 2.5 * k; g.beginPath(); g.arc(x, y, r - 4 * k, 3.5, 4.9); g.stroke();
 }
-
-// —— 湿布（手的本地坐标，掌宽 = 1，跟手一起转）：对折的一块压在掌下，左后方拖一个布角；擦的时候指尖前面的布被扣出几道放射的拉褶 ——
-const CLOTH = [[-.74, -.98], [-.45, -1.1, 1], [-.12, -1.04], [.2, -1.12, 1], [.52, -1.02], [.76, -.9, 1], [.82, -.4], [.74, .1, 1], [.8, .42], [.5, .56, 1], [.1, .5], [-.3, .58, 1], [-.64, .46], [-.8, .12, 1], [-.78, -.42]];
-function cloth(g, x, y, rot, s, o) {
-  const cr = Math.cos(rot), sr = Math.sin(rot), X = p => [x + (p[0] * cr - p[1] * sr) * s, y + (p[0] * sr + p[1] * cr) * s, p[2]];
-  const sq = o.bunch ?? 1, B = CLOTH.map(([px, py, k]) => X([px * sq, py * (.6 + .4 * sq) - .1 * (1 - sq), k]));
-  const wv = o.wave ?? 0, hang = o.hang ?? 0;   // 布角：12 fps 微微摆；抬起时往下垂
-  const flap = [[-.6, .28], [-.92, .4 + .04 * wv], [-1.2 - .1 * hang, .58 + .05 * wv + .3 * hang, 1], [-1.08 - .06 * hang, .74 + .35 * hang], [-.84, .8 + .2 * hang, 1], [-.46, .56]].map(X);
-  const lift = o.lift ?? 0;
-  g.save(); g.translate(7 + 40 * lift, 6 + 30 * lift); g.fillStyle = rgba(WD.woodDark, .42); g.fill(path(flap)); g.fill(path(B)); g.restore();   // 布投在台面上的影
-  cel(g, flap, { f: CL.f, s: CLS, so: [-4, -3], sh: [[[-.66, .4], [-1.0, .55], [-1.1, .66], [-.7, .5]].map(X)], l: CL.l, lw: 2 });
-  const sh = [[[-.5, -1.0], [-.4, -1.02], [-.22, -.3], [-.32, .34], [-.42, .32], [-.32, -.3]].map(X),   // 一道斜折
-    [[.58, -.98], [.66, -.95], [.7, .3], [.62, .32]].map(X)];                                             // 对折的那条边：两层布叠着
-  if (o.tips) for (const [tx, ty] of o.tips) sh.push([[tx - .03, ty - .02], [tx + .03, ty - .02], [tx + .05 * Math.sign(tx), ty - .2], [tx + .02 * Math.sign(tx), ty - .24]].map(X));   // 指尖扣出的拉褶
-  cel(g, B, { f: CL.f, s: CLS, so: [-5, -4], sh, h: CL.h, hi: [[[-.62, -.96], [-.42, -1.06], [-.36, -.98], [-.56, -.9]].map(X), [[-.74, -.3], [-.7, .1], [-.64, .08], [-.68, -.3]].map(X)], l: CL.l, lw: 2 });
-}
-// 指尖前面被扣起来的一道布褶：盖住四个指尖（四指扣进布里）
-function roll(g, x, y, rot, s, tips) {
-  const cr = Math.cos(rot), sr = Math.sin(rot), X = p => [x + (p[0] * cr - p[1] * sr) * s, y + (p[0] * sr + p[1] * cr) * s, p[2]];
-  const T = [...tips].sort((p, q) => p[0] - q[0]), back = [], front = [];
-  T.forEach((p, i) => { back.push([p[0], p[1] + .025]); if (i < T.length - 1) { const q = T[i + 1]; back.push([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2 + .09, 1]); } });   // 只盖住指尖一小截：手指扣进布里，不是套了手套
-  T.forEach(p => front.push([p[0] - .05, p[1] - .1, 1], [p[0] + .05, p[1] - .12]));
-  const pts = [[T[0][0] - .15, T[0][1] + .01, 1], ...back, [T[3][0] + .13, T[3][1] + .03, 1], ...front.reverse()].map(X);
-  cel(g, pts, { f: CL.f, s: CLS, so: [-4, -3], sh: T.slice(0, 3).map((p, i) => [[(p[0] + T[i + 1][0]) / 2, (p[1] + T[i + 1][1]) / 2 + .1], [(p[0] + T[i + 1][0]) / 2 + .03, (p[1] + T[i + 1][1]) / 2 - .02], [(p[0] + T[i + 1][0]) / 2 - .02, (p[1] + T[i + 1][1]) / 2 - .08]].map(X)), h: CL.h, hi: T.map(p => [[p[0] - .06, p[1] - .07], [p[0] + .02, p[1] - .1], [p[0], p[1] - .06]].map(X)), l: CL.l, lw: 2 });
-}
-
-// 手（含投影）：先画到离屏，投影 = 同一剪影染成暗部色，往背光方向（右下）偏；抬得越高偏得越远
-let HC = null;
-function handAt(g, x, y, rot, k, lift, P) {
-  if (!HC) HC = { a: canvas(W, H), b: canvas(W, H) };
-  const [hc, hg] = HC.a, [sc, sg] = HC.b;
-  hg.setTransform(1, 0, 0, 1, 0, 0); hg.clearRect(0, 0, W, H);
-  hand(hg, null, { x, y, s: S * k, rot, side: 'R', pose: pose(P), light: 'warm', ld: LD, arm: 5 });
-  sg.setTransform(1, 0, 0, 1, 0, 0); sg.globalCompositeOperation = 'source-over'; sg.clearRect(0, 0, W, H); sg.drawImage(hc, 0, 0);
-  sg.globalCompositeOperation = 'source-in'; sg.fillStyle = WD.woodDark; sg.fillRect(0, 0, W, H); sg.globalCompositeOperation = 'source-over';
-  g.save(); g.globalAlpha = .45; g.drawImage(sc, 12 + 46 * lift, 9 + 34 * lift); g.restore();
-  g.drawImage(hc, 0, 0);
-}
-
-// 这一张：手（台面坐标的掌心）、手型、缩放、抬起，擦到哪（u），布怎么画
-function beat(lq) {
-  const { b } = ARC;
-  if (lq < .25) {                                                          // 33.0–33.25：从下沿拿着布进来（3 张），落到起笔处
-    const i = Math.round(lq * 12), d = [560, 250, 70][i], a = at(0), v = toS(a[0], a[1]);
-    return { u: 0, h: [a[0] + v[0] * d, a[1] + v[1] * d], P: { ...HP.scrub, a: 76 }, k: [1.12, 1.07, 1.02][i], lift: [1.6, 1, .4][i], grip: 1 };
+// 这一张的台面：木板 → （扣掉弧带）水印 + 面粉 → 湿痕 + 水光 + 粉埂 → 拇指抹过的亮痕
+function surface(T, u, mark) {
+  const g = T.g;
+  g.drawImage(T.table, 0, 0);
+  const sw = u > 0 ? swept(u) : null;
+  g.save();
+  if (sw) { const hole = new Path2D(); hole.rect(-10, -10, TW + 20, TH + 20); hole.addPath(sw); g.clip(hole, 'evenodd'); }
+  ring(g); g.drawImage(T.flour, 0, 0); g.restore();
+  if (sw) {
+    g.fillStyle = rgba(WD.woodDark, .2); g.fill(sw);   // 湿痕：深一档的木头
+    const glint = (off, t0, t1, w) => { if (u <= t0) return; const sp = []; for (let i = 0; i <= 20; i++) { const s = t0 + (Math.min(t1, u) - t0) * i / 20, p = at(s), n = tan(s) + Math.PI / 2; sp.push(P(p[0] + Math.cos(n) * off * ARC.w, p[1] + Math.sin(n) * off * ARC.w)); } g.fill(path(ribbon(sp, s => w * k * Math.sqrt(Math.sin(Math.PI * s))))); };
+    g.fillStyle = rgba(mix(LIGHT.warm, WD.woodHalo, .3), .8); glint(-.22, .1, .3, 4); glint(-.3, .38, .55, 3.5); glint(.12, .62, .8, 4);
+    berm(g, u);
   }
-  if (lq < 1.5) { const u = io((lq - .25) / 1.25); return { u, h: at(u), P: { ...HP.scrub, a: lerp(76, 84, u) }, k: 1, lift: 0, grip: 1 }; }   // 33.25–34.5：扣布、掌根压着顺弧擦；腕跟着弧慢慢回正（往小指一侧折 14° → 6°）
-  if (lq < 1.75) { const m = [.35, .7, 1][Math.round((lq - 1.5) * 12)]; return { u: 1, h: b, P: mixP({ ...HP.scrub, a: 84 }, HP.flat, m), k: 1, lift: .3 * (1 - m), grip: m < .5 ? 1 : 0 }; }   // 松开四指、放平（3 张）
-  if (lq < 2.75) { const ti = lq < 1.875 ? 0 : Math.min(3, Math.round((lq - 1.875) * 12) + 1); return { u: 1, h: b, P: { ...HP.flat, th: THUMB[ti] }, k: 1, lift: 0, ti }; }   // 掌平放；拇指顺木纹抹，停一拍
-  const i = Math.min(2, Math.round((lq - 2.75) * 12)), v = toS(b[0], b[1]), d = [70, 340, 720][i];      // 35.75 起 3 张：攥起布、往下沿抬出画
-  return { u: 1, h: [b[0] + v[0] * d, b[1] + v[1] * d], P: mixP({ ...HP.flat, th: THUMB[3] }, HP.grab, [.55, 1, 1][i]), k: [1.05, 1.13, 1.22][i], lift: [.8, 1.8, 2.8][i], ti: 3, out: i + 1 };
+  if (mark) {
+    const [a, b] = mark.map(p => P(...p));
+    g.strokeStyle = rgba(mix(WD.woodHalo, LIGHT.warm, .55), .75); g.lineWidth = 7 * k; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke();
+  }
+  T.tex.needsUpdate = true;
+}
+
+// —— 湿布：对折后的一块（布坐标，米，跟手一起转：x 往小指一侧为正，z 往手腕一侧为正），左后（拇指一侧、靠腕）拖出一个布角 ——
+// 顶面是 (s, t) 网格上的高度场；底面 = 顶面沿法线往下 2.5 mm，四边缝起来 → 闭合的薄片（背面外扩的描边才描得出来）
+const CN = 72, CC = [0.003, -0.03];   // CC = 布心（布坐标）
+function restXZ(s, t) {
+  const wc = ((1 - s) * t) ** 2.2;   // 拖角的权重（左后角 = 1）
+  const x = lerp(-0.068, 0.074, s) - 0.032 * wc + 0.004 * Math.sin(t * 9 + 1) * (1 - s) ** 3 + 0.003 * Math.sin(t * 7 + 2) * s ** 3;
+  const z = lerp(-0.112, 0.052, t) + 0.022 * wc + 0.004 * Math.sin(s * 8 + .5) * (1 - t) ** 3 + 0.003 * Math.sin(s * 11) * t ** 3;
+  return [x, z, wc];
+}
+const COR = restXZ(0, 1);
+// 布上的皱：[起 x, 起 z, 止 x, 止 z, 高, 半宽]（布坐标，米）——拇指一侧一道长斜折、掌根后面两道横皱、前沿和右沿几道短褶
+const WR = [[-0.058, 0.04, -0.036, -0.06, 0.006, 0.006], [-0.04, 0.045, 0.03, 0.03, 0.004, 0.005], [-0.02, 0.05, 0.05, 0.048, 0.003, 0.004],
+  [0.035, -0.105, 0.05, -0.07, 0.004, 0.004], [-0.03, -0.11, -0.045, -0.085, 0.0035, 0.004], [0.06, -0.02, 0.072, 0.02, 0.004, 0.004],
+  [-0.064, -0.02, -0.05, 0.0, 0.003, 0.004], [-0.085, 0.07, -0.06, 0.05, 0.005, 0.005]];
+// 摊在台面上（被手按着 / 松开）：c = { O, th, y, grip, wv, G（捏起时指尖在布坐标里的位置） }
+function clothTop(c) {
+  const rz = -0.074;
+  return (s, t) => {
+    let [x, z, wc] = restXZ(s, t), y = 0.0032;
+    y += 0.0025 * (1 - sst(0, .1, Math.min(s, 1 - s, t, 1 - t)));                                // 湿布边略翘
+    if (c.grip && c.tips) {                                                                         // 四指扣进布里：指尖前面拱起一道连着的布褶，再往前拉出几道放射的褶
+      const T = [...c.tips].sort((p, q) => p[0] - q[0]), x0 = T[0][0], x1 = T[3][0];
+      let zr = T[0][1]; for (let m = 0; m < 3; m++) if (x > T[m][0]) zr = lerp(T[m][1], T[m + 1][1], cl((x - T[m][0]) / (T[m + 1][0] - T[m][0])));
+      y += c.grip * 0.009 * Math.exp(-(((z - zr + 0.008) / 0.009) ** 2)) * sst(x0 - 0.014, x0, x) * (1 - sst(x1, x1 + 0.014, x));
+      for (const [tx, tz] of T) y += c.grip * 0.005 * Math.exp(-((segD(x, z, tx, tz - 0.012, tx * 1.3, -0.118) / 0.004) ** 2)) * sst(tz - 0.01, tz - 0.025, z);
+    }
+    for (const [ax, az, bx, bz, hh, ww] of WR) y += hh * 1.5 * Math.exp(-((segD(x, z, ax, az, bx, bz) / ww) ** 2));   // 湿布本身的皱：几道长短不一的褶
+    y += 0.0035 * Math.exp(-((segD(x, z, 0.058, -0.1, 0.064, 0.045) / 0.005) ** 2));               // 小指一侧：对折的那条边，两层叠着
+    y += (0.013 + 0.003 * Math.sin((c.wv || 0) * 1.9)) * wc ** 1.4;                                // 拖角翘起、卷一点，12 fps 轻轻摆
+    if (c.G) { const m = wc ** .8; x += (c.G[0] - COR[0]) * m; z += (c.G[1] - COR[1]) * m; y += Math.max(0, c.G[2] - y) * m; }   // 布角被捏起来：角附近整块挪到指尖、往上提成一个小帐篷（不往一点收，免得拉成丝）
+    const [wx, wz] = rot(c.th, x, z);
+    return [c.O[0] + wx, y + (c.y || 0), c.O[1] + wz];
+  };
+}
+// 捏着布角提起来：布从指尖垂下，垂到台面的那段还拖在台面上（朝布原来的位置）；横向收拢、带几道竖褶
+function drapeTop(c, G) {
+  const ax = norm2(CC[0] - COR[0], CC[1] - COR[1]), ctr = rot(c.th, ...CC), tr = norm2(c.O[0] + ctr[0] - G[0], c.O[1] + ctr[1] - G[2]), pp = [-tr[1], tr[0]], hY = G[1] - 0.004;
+  return (s, t) => {
+    const [x, z] = restXZ(s, t), rx = x - COR[0], rz = z - COR[1], al = rx * ax[0] + rz * ax[1], ac = -rx * ax[1] + rz * ax[0];
+    const hang = Math.min(al, hY), lie = Math.max(0, al - hY), wob = 0.009 * Math.sin(al * 70 + ac * 30) * sst(0, .03, al);
+    const w = ac * .5 + wob, f = 0.006 * Math.sin(ac * 60 + al * 20);
+    return [G[0] + pp[0] * w + tr[0] * (lie + f), Math.max(0.0035, G[1] - hang), G[2] + pp[1] * w + tr[1] * (lie + f)];
+  };
+}
+function clothGeo(fn) {
+  const n = CN + 1, top = [];
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) top.push(fn(i / CN, j / CN));
+  const pos = new Float32Array(n * n * 6), id = [];
+  const up = (i, j) => {   // 顶面朝上的法线 = ∂t × ∂s
+    const A = top[j * n + Math.min(CN, i + 1)], B = top[j * n + Math.max(0, i - 1)], Cc = top[Math.min(CN, j + 1) * n + i], Dd = top[Math.max(0, j - 1) * n + i];
+    const u = [0, 1, 2].map(q => A[q] - B[q]), v = [0, 1, 2].map(q => Cc[q] - Dd[q]);
+    const m = [v[1] * u[2] - v[2] * u[1], v[2] * u[0] - v[0] * u[2], v[0] * u[1] - v[1] * u[0]], L = Math.hypot(...m) || 1;
+    return m.map(q => q / L);
+  };
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const q = j * n + i, p = top[q], nn = up(i, j);
+    pos.set(p, q * 3); pos.set([p[0] - nn[0] * 0.0025, p[1] - nn[1] * 0.0025, p[2] - nn[2] * 0.0025], (n * n + q) * 3);
+  }
+  const T = (i, j) => j * n + i, Bt = (i, j) => n * n + j * n + i;
+  for (let j = 0; j < CN; j++) for (let i = 0; i < CN; i++) {
+    id.push(T(i, j), T(i, j + 1), T(i + 1, j), T(i + 1, j), T(i, j + 1), T(i + 1, j + 1));
+    id.push(Bt(i, j), Bt(i + 1, j), Bt(i, j + 1), Bt(i + 1, j), Bt(i + 1, j + 1), Bt(i, j + 1));
+  }
+  const loop = [];
+  for (let i = 0; i < CN; i++) loop.push([i, 0]);
+  for (let j = 0; j < CN; j++) loop.push([CN, j]);
+  for (let i = CN; i > 0; i--) loop.push([i, CN]);
+  for (let j = CN; j > 0; j--) loop.push([0, j]);
+  loop.forEach((p, m) => { const q = loop[(m + 1) % loop.length], a = T(...p), b = T(...q), c = Bt(...p), d = Bt(...q); id.push(a, b, c, c, b, d); });
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setIndex(id); geo.computeVertexNormals();
+  return geo;
+}
+
+// —— 手型（度）：[张开（正 = 往拇指那边）, 掌指关节弯, 中节弯, 末节弯]；拇指 [指根张开, 指根弯, 第二节弯, 末节弯] ——
+// 扣布擦：四指往下扣进布里（食指最直、小指最蜷），拇指顺着布的左沿压着；放平：四指松开、略张、指尖轻贴木头；捏布角：四指收拢、拇指压过来
+const POSE = {
+  scrub: { thumb: [-20, 4, 6, 4], index: [1, 14, 22, 12], middle: [0, 16, 24, 13], ring: [-1, 18, 25, 13], pinky: [-4, 20, 26, 13] },
+  flat: { thumb: [-14, 14, 8, 6], index: [-2, 6, 10, 6], middle: [0, 5, 10, 6], ring: [1, 7, 11, 6], pinky: [-2, 9, 12, 7] },
+  grab: { thumb: [-4, 36, 26, 18], index: [1, 44, 62, 34], middle: [0, 48, 66, 36], ring: [-2, 52, 70, 36], pinky: [-5, 56, 72, 36] },
+};
+// 拇指张开角负 = 往外（左）打开（试过 -40…60：负值才露在掌外）。顺木纹往外抹：4 张，指根压着，末节受力往后翘
+const STROKE = [[-14, 14, 8, 6], [-22, 16, 8, 2], [-30, 18, 8, -2], [-36, 20, 8, -4]];
+const mixP = (A, B, m) => Object.fromEntries(Object.keys(A).map(f => [f, A[f].map((v, j) => lerp(v, B[f][j], m))]));
+const yawAt = (x, z) => { const [dx, dz] = norm2(x - E0[0], z - E0[2]); return Math.atan2(-dx, -dz) - 10 * D2R; };   // 四指顺着前臂往前，腕往小指一侧折 10°
+function originAt(u) { const p = at(u), o = rot(yawAt(...p), ...CC), O = [p[0] - o[0], p[1] - o[1]]; return { O, th: yawAt(...O) }; }
+
+// 这一张（tc = 按 12 fps 取整的镜头内秒数）：手（掌心压点 + 朝向 + 俯仰）、手型、布、擦到哪（u）、拇指抹到第几张（ti）
+function act(tc) {
+  const n = Math.round(tc * 12), end = originAt(1), F = (o => [end.O[0] + o[0], end.O[1] + o[1]])(rot(end.th, -0.07, 0.19));
+  if (n < 3) {   // 33.0–33.25：拿着布从下沿进来，3 张落到起笔处
+    const { O } = originAt(0), dir = norm2(E0[0] - O[0], E0[2] - O[1]), d = [0.26, 0.12, 0.035][n], X = [O[0] + dir[0] * d, O[1] + dir[1] * d], y = [0.11, 0.05, 0.012][n];
+    return { hand: [X[0], y + 0.0065, X[1]], th: yawAt(...X), pitch: 6, pose: POSE.scrub, cloth: { O: X, th: yawAt(...X), y, grip: 1, wv: n }, u: 0 };
+  }
+  if (n < 18) { const u = io((tc - .25) / 1.25), { O, th } = originAt(u); return { hand: [O[0], 0.0065, O[1]], th, pitch: 3, pose: POSE.scrub, cloth: { O, th, grip: 1, wv: n }, u }; }   // 33.25–34.5 顺弧擦
+  const rest = { O: end.O, th: end.th };
+  if (n < 21) {   // 34.5–34.75：手离开布，往回放平在擦净的木头上（3 张）
+    const m = [.4, .78, 1][n - 18], X = [lerp(end.O[0], F[0], m), lerp(end.O[1], F[1], m)];
+    return { hand: [X[0], [0.016, 0.012, 0][n - 18] + lerp(0.0065, 0.0015, m), X[1]], th: yawAt(...X), pitch: lerp(3, 0, m), pose: mixP(POSE.scrub, POSE.flat, m), cloth: { ...rest, grip: 1 - m }, u: 1 };
+  }
+  if (n < 33) { const ti = n < 23 ? 0 : Math.min(3, n - 22); return { hand: [F[0], 0.0015, F[1]], th: yawAt(...F), pitch: 0, pose: { ...POSE.flat, thumb: STROKE[ti] }, cloth: rest, u: 1, ti }; }   // 掌平放；拇指顺木纹抹，停一拍
+  const j = Math.min(2, n - 33), dir = norm2(E0[0] - F[0], E0[2] - F[1]), d = [-0.03, 0.08, 0.17][j], X = [F[0] + dir[0] * d, F[1] + dir[1] * d];   // 35.75 起 3 张：捏起布角、往下沿抬出画（最后一张手和布还压在下沿上，切在动作上）
+  return { hand: [X[0], [0.012, 0.055, 0.10][j], X[1]], th: yawAt(...X), pitch: [8, 16, 20][j], pose: POSE.grab, cloth: { ...rest, pick: j + 1 }, u: 1, ti: 3 };
+}
+
+let S = null;
+function setup() {
+  if (S) return S;
+  const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(36, 16 / 9, 0.05, 20);
+  const [dc, dg] = canvas(TW, TH), T = { table: tablePlate(), flour: flourPlate(), g: dg, tex: new THREE.CanvasTexture(dc) };
+  T.tex.anisotropy = renderer().r.capabilities.getMaxAnisotropy();
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: T.tex }));
+  board.rotation.x = -Math.PI / 2; board.position.set(X0 + PW / 2, 0, Z0 + PH / 2);
+  const shade = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.ShadowMaterial({ color: new THREE.Color(WD.woodDark), opacity: .55 }));
+  shade.rotation.x = -Math.PI / 2; shade.position.set(board.position.x, 0.0004, board.position.z); shade.receiveShadow = true;
+  for (const m of [board, shade]) { m.userData.bg = true; m.material.userData.outlineParameters = { visible: false }; }
+  const cloth = new THREE.Mesh(new THREE.BufferGeometry(), toon(C('cloth'), { t: .3, hi: .96 })); cloth.castShadow = cloth.receiveShadow = true;
+  const hand = makeHand('R');
+  scene.add(board, shade, cloth, hand.root, hand.arm);
+  sun(scene, [-0.55, 1.0, -0.6], 0.8, [0, 0, 0.03]);
+  return (S = { scene, cam, T, cloth, hand });
 }
 
 export function draw(g, e, lt, A, t) {
-  const { table, flour } = plates();
-  const pan = -PAN * io(Math.min(1, lt / 1.5)), lq = q12(lt), B = beat(lq);
-  g.drawImage(table, pan - OX, 0);
-  const sw = swept(B.u), hole = new Path2D();
-  hole.rect(-OX - 10, -10, TW + 20, H + 20); if (B.u > 0) hole.addPath(sw);
-  g.save(); g.translate(pan, 0);
-  g.save(); g.clip(hole, 'evenodd'); ring(g); g.drawImage(flour, -OX, 0); g.restore();   // 面粉和碗底水印：扣掉擦过的弧带
-  if (B.u > 0) {
-    g.fillStyle = rgba(WD.woodDark, .24); g.fill(sw);                                  // 湿痕：深一档的木头
-    const glint = (off, t0, t1, wpx) => { if (B.u <= t0) return; const sp = []; for (let i = 0; i <= 20; i++) { const s = t0 + (Math.min(t1, B.u) - t0) * i / 20, p = at(s), n = tan(s) + Math.PI / 2; sp.push([p[0] + Math.cos(n) * off * ARC.w, p[1] + Math.sin(n) * off * ARC.w]); } g.fill(path(ribbon(sp, s => wpx * Math.sqrt(Math.sin(Math.PI * s))))); };
-    g.fillStyle = rgba(mix(LIGHT.warm, WD.woodHalo, .3), .8); glint(-.22, .1, .3, 4); glint(-.3, .38, .55, 3.5); glint(.12, .62, .8, 4);
-    berm(g, B.u);
+  const s = setup(), tc = Math.floor(lt * 12 + 1e-6) / 12, Q = act(tc), H = s.hand, v = new THREE.Vector3();
+  const place = pose => { H.pose(pose); H.root.position.set(...Q.hand); H.root.rotation.set(Q.pitch * D2R, Q.th, 0, 'YXZ'); H.root.updateMatrixWorld(true); };
+  const tipW = () => { const a = H.B['index-finger-tip'].getWorldPosition(v).clone(), b = H.B['thumb-tip'].getWorldPosition(v).clone(); return a.lerp(b, .35); };
+  let mark = null;
+  if (Q.ti >= 2 && !Q.cloth.pick) {   // 拇指抹过的亮痕：从第 1 张的拇指尖到这一张的拇指尖
+    place({ ...Q.pose, thumb: STROKE[1] }); const a = H.B['thumb-tip'].getWorldPosition(v).clone();
+    place(Q.pose); const b = H.B['thumb-tip'].getWorldPosition(v).clone();
+    mark = [[a.x, a.z], [b.x, a.z]];   // 顺木纹（横走）
   }
-  if (B.ti >= 2) {                                                                     // 拇指抹过的一道亮痕（顺木纹，横走）
-    const r = rotAt(...ARC.b, HP.flat), tip = th => { const p = thumbTip(th); return [ARC.b[0] + (p[0] * Math.cos(r) - p[1] * Math.sin(r)) * S, ARC.b[1] + (p[0] * Math.sin(r) + p[1] * Math.cos(r)) * S]; };
-    const p0 = tip(THUMB[1]), p1 = tip(THUMB[Math.min(3, B.ti)]);
-    g.strokeStyle = rgba(mix(WD.woodHalo, LIGHT.warm, .55), .75); g.lineWidth = 7; g.lineCap = 'round';
-    g.beginPath(); g.moveTo(p0[0] + 8, p0[1]); g.lineTo(p1[0], p1[1] + 2); g.stroke();
+  place(Q.pose);
+  if (Q.cloth.pick === 1) {   // 捏布角那一张：先摆好手，量指尖离布角差多少，整只手挪过去 → 指尖正好落在布角上（布不会被拉成一根丝）
+    const G = tipW(), cw = rot(Q.cloth.th, COR[0], COR[1]);
+    Q.hand = [Q.hand[0] + Q.cloth.O[0] + cw[0] - G.x, Q.hand[1], Q.hand[2] + Q.cloth.O[1] + cw[1] - G.z]; place(Q.pose);
   }
-  // 布 + 手（台面坐标 → 屏幕：x 加 pan）
-  const [hx, hy] = B.h, rot = rotAt(hx, hy, B.P), x = hx + pan, wv = Math.sin(lq * 12 * 1.9);
-  g.restore();
-  const tips = tipsOf(B.P), s = S * B.k;
-  if (B.out) cloth(g, x, hy, rot, s, { bunch: .62, hang: B.out / 3, lift: B.lift, wave: wv });
-  else cloth(g, x, hy, rot, s, { tips: B.grip ? tips : null, lift: B.lift, wave: B.u < 1 ? wv : 0 });
-  handAt(g, x, hy, rot, B.k, B.lift, B.P);
-  if (B.grip || B.out) roll(g, x, hy, rot, s, tips);   // 抬出画时四指攥着的那团布从指尖下鼓出来：攥着布，不是空拳
+  if (Q.cloth.grip) Q.cloth.tips = ['index', 'middle', 'ring', 'pinky'].map(f => { const p = H.B[`${f}-finger-tip`].getWorldPosition(v); return rot(-Q.cloth.th, p.x - Q.cloth.O[0], p.z - Q.cloth.O[1]); });
+  const w = H.root.position, ea = [E0[0] - w.x, E0[1] + w.y * .6 - w.y, E0[2] - w.z];
+  H.aimArm(ea);
+  let fn;
+  if (Q.cloth.pick >= 2) { const G = tipW(); fn = drapeTop(Q.cloth, [G.x, G.y - 0.006, G.z]); }
+  else if (Q.cloth.pick === 1) { const G = tipW(), l = rot(-Q.cloth.th, G.x - Q.cloth.O[0], G.z - Q.cloth.O[1]); fn = clothTop({ ...Q.cloth, G: [l[0], l[1], G.y - 0.008] }); }
+  else fn = clothTop(Q.cloth);
+  s.cloth.geometry.dispose(); s.cloth.geometry = clothGeo(fn);
+  surface(s.T, Q.u, mark);
+  const pu = io(Math.min(1, lt / 1.5)), tg = [lerp(-0.075, 0.07, pu) + 0.012 * Math.max(0, lt - 1.5) / 1.5, 0, 0.012], d = 0.80, el = 58 * D2R;
+  s.cam.position.set(tg[0], d * Math.sin(el), tg[2] + d * Math.cos(el)); s.cam.lookAt(...tg);
+  draw3d(g, e, s.scene, s.cam);
   return {};
 }

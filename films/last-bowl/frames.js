@@ -7,7 +7,7 @@ import { W, H } from './lib/cel.js';
 // 第 3 轮（评委：角落比内侧暗约 50%）：.07 → .045，暗角本身只压 11%；加上扫描线、S 曲线对暗部多压的几个百分点，
 // 实测 CRT 版和 raw 版相比，角上只比画面中心多暗约 15%（a、a2 都量过）。角上剩下的暗是背景板自己画的（plates.js）
 export const POST = { corner: .045 };
-const MODS = ['plates', 'hands', 'props', 'fx', 'scenes'];
+const MODS = ['plates', 'hands', 'props', 'fx', 'scenes', 'hand3d'];
 
 export async function load() {
   const A = { mods: {} };
