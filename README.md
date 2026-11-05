@@ -29,6 +29,8 @@
 
 | 作品 | 类型 | 说明 |
 |---|---|---|
+| [最后一碗面](films/last-bowl/) | 叙事微短片 · 80 年代赛璐璐 + 三渲二 · 45 秒 | 深夜面馆，老师傅关门前的最后一碗面。有手的镜头用三维骨骼手 + 卡通渲染，画面仍是平涂赛璐璐；前后六版，[复盘：为什么改了六版](retros/2026-11-05-last-bowl.md) |
+| [《最后一碗面》幕后](works/last-bowl-making-of/) | 幕后科普 · 发布会大屏 · 2:48 | 逐段讲第一版的问题、平面画法为什么改不动、三渲二解决了什么、AI 在哪里自信地看错，最后放第六版。Remotion，一份时间轴管切片、出图、混音。[分镜与出处](works/last-bowl-making-of/script.md) |
 | [AI 到底该怎么用](works/ai-howto/) | 科普讲解 · 纸本风格 · 3:46 | 用一条工厂流水线讲"管人和用 AI 是同一套逻辑"：毛奇的作战计划、贝索斯的单向门、新乡重夫的弹簧小碟、PDCA。Remotion 17 个镜头，4 个 agent 并行构建，两轮评审。[源码](works/ai-howto/video/) |
 | [雨夜便利店街角](works/rainy-corner-diorama/) | 三维微缩 · 三渲二 | three.js 可拖拽的雨夜街角模型，三渲二描边加霓虹倒影。[在线版](https://claude.ai/artifact/EihBG86XhJRQmKkUZ8wC56) |
 
