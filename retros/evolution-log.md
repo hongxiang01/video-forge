@@ -84,3 +84,26 @@
 - `skill/references/genres/making-of.md`（新类型卡，编号 B11–B17）、`genres/README.md` 选卡表。
 - `skill/references/publish-douyin.md`（新）：ego lite 上传、5 个话题上限、章节、封面、定时。
 - `skill/references/genres/narrative-short.md` 常见坑 12–14；`troubleshooting.md` 加 Remotion 浏览器下载、对比差一张画、三渲二明暗闪烁三条；`music.md` 写入「背景音乐不用 AI 生成」。
+
+## 第 5 轮（2026-11-06）：《违背的青春》MV，人物怎么演、故事怎么编
+
+用户原话：
+- 「你把这个动画生成的方式，也就是之前一开始带歌词版的那个方式……记到我的方法论里面，记到我的 skill 里面沉淀和整理一下。」
+- 「然后再把所有的东西，包括所有的代码库或者方法论，重新编排、重构一下，最后 push 上就可以了。」
+
+这一轮的参考就是自己的作品，复盘见 `retros/2026-11-06-weibei-youth-mv.md`。
+
+**拆出来的规律**
+1. 人物要演大动作，就逐个画姿势：头和身子出自同一张画；骨骼只做小动作；同组几张靠模板匹配对齐，不然换张时头会跳。
+2. 做法有上限：同一类问题连着两版不见好，就该换做法，别再调参数（第 6 版 v2–v4、骨骼版）。
+3. 故事这一层要单独过关。三次失败都出在这一层：没读懂、逐句配图、中心放错了意象。
+4. 代码画不出来的画风（真人、3D）交给 Muse，我只出文本：剧本、资产表、逐镜提示词。
+
+**写回 skill 的改动**
+- `recipes/chalk-pose-mv.md`（新）：黑板粉笔定格 MV 的完整做法和已知坑。
+- `skill/references/pipeline-mv.md`：重写，新增故事梗概一关，分成路线 A（代码逐帧）和路线 B（Muse）。
+- `skill/SKILL.md`：铁规矩 7 加"大动作逐个画姿势、头身同一画源"；分流表和参考表的 MV 一行改成两条路线。
+- `skill/references/genres/music-video.md`：常见坑 11–13。
+- `skill/references/troubleshooting.md`：豆包调试端口、代理、恢复正常启动、逐帧渲染的坑。
+- `tools/doubao/README.md`（新）。
+- 作品 `works/weibei-youth-mv/` 加了 `README.md` 文件地图和 `chalk/CREDITS` 署名；大图和逐帧只留本机。

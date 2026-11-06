@@ -16,3 +16,9 @@
 | Remotion 渲染卡在 `Downloading Chrome Headless Shell`（十几分钟不动） | 新项目第一次渲染要从谷歌下载 93 MB 浏览器，走代理或直连都很慢 | 加 `--browser-executable=~/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell --gl=angle --concurrency=8`（Remotion 4.0.507 实测，1080p 2956 帧约 2 分钟） |
 | 改前改后对比图差了一张画 | lemo 的 `still.mjs` 会把 t 按 12 fps 向下取整 | 用 t = k/12 + 0.01 出图，或直接从两版成片按同一时间码抽帧 |
 | 三渲二的胳膊每换一张就闪暗一次 | 胳膊转向后整条翻到卡通明暗的暗面 | 少挪一点，改完连着几张看明暗（`pipeline-style-film.md`「做法先于画风」） |
+| 豆包自动化连上了，操作的却是别的浏览器 | 本机 `127.0.0.1:9333` 被 Google Chrome 占着 | 豆包调试端口一律连 `[::1]:9333`（IPv6），见 `~/video-forge/tools/doubao/README.md` |
+| `curl` / Python 连豆包调试端口没有返回 | 请求走了 shell 里的代理 | 命令前加 `env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY NO_PROXY='*'`（zsh 里不要把它存进变量再展开，直接写在命令前） |
+| 用完豆包，重开后还带着调试端口 | `open -a Doubao` 会沿用上次的启动参数 | 先彻底退出（`osascript -e 'quit app "Doubao"'`），再 `open /Applications/Doubao.app`；`ps` 里看不到 `--remote-debugging-port` 才算恢复 |
+| 逐帧渲染报 `ENOBUFS` / `No buffer space available` | 上一轮的 chrome-headless-shell 进程没退出 | `pkill -f chrome-headless-shell`，进程数不超过 6 |
+| `render.py --ranges` 重渲后画面没变 | 已经存在的帧会被跳过 | 先删掉那一段的旧帧再渲 |
+| 豆包切出来的人物身上有方块缺口 | 去水印时把右下角整块涂成了板色 | 只修补水印那几个字（`cv2.inpaint`），见 `recipes/chalk-pose-mv.md` 第 8 节 |

@@ -11,7 +11,7 @@ description: 成片工坊总入口：画风视频、音乐 MV、科普动画、�
 2. **先确认，再生产**：画风、设定、分镜都要用户点头，才进入耗时的制作。
 3. **别人来审**：成片交给独立评委，按用户确认过的「评审标准卡」逐条判定，不拿自检代替审片。
 
-生产本身交给已有的产线（lemo-opuscar、mv-director、Remotion、three.js 微缩），这个 skill 只做导演和关卡。
+生产本身交给已有的产线（lemo-opuscar、mv-director、Remotion、three.js 微缩），这个 skill 只做导演和关卡。代码画不出来的画风（真人、3D），我出剧本、资产表和逐镜提示词，用户自己交给生成式视频工具 Muse（`references/pipeline-mv.md` 路线 B）。
 
 ## 铁规矩
 
@@ -21,7 +21,7 @@ description: 成片工坊总入口：画风视频、音乐 MV、科普动画、�
 4. **关卡顺序不能跳**：需求卡 + 评审标准卡 → 画风（样片）→ 风格卡/风格帧 → 设定卡 → 分镜联系表 → 草稿 → 评委循环 → 归档。产线可以声明跳过某关（如微缩没有分镜），但要写明。
 5. **分镜默认要确认**（lemo 默认不确认，这里改成默认确认）。
 6. **评委是独立子 agent**，只给作品和用户确认的评审标准卡，不给我的结论。评委要看全片（每 2 秒抽 1 帧），只能测量声音、不评价好不好听。用户的话优先于评委。
-7. **人物不演戏**：代码画的表情、手部动作必僵。除非产线有角色绑定能力，人物只做小、远、静止或简单循环。**手要拿东西、东西压着东西的镜头，开工就用三渲二**（三维骨骼手 + 三维道具 + 卡通渲染，`references/pipeline-style-film.md`「做法先于画风」），不用平面拼手：《最后一碗面》平面画的手改了三版还像机器，擀面杖擀到了桌上。
+7. **人物不演戏**：代码画的表情、手部动作必僵。除非产线有角色绑定能力，人物只做小、远、静止或简单循环。**手要拿东西、东西压着东西的镜头，开工就用三渲二**（三维骨骼手 + 三维道具 + 卡通渲染，`references/pipeline-style-film.md`「做法先于画风」），不用平面拼手：《最后一碗面》平面画的手改了三版还像机器，擀面杖擀到了桌上。**人物要演大动作（走、跳、跪、起身、伸手），就一个姿势一个姿势地画**：豆包照同一张全身设定图，一张图画同一个动作的 4 个瞬间，切开后按拍子换张（`~/video-forge/recipes/chalk-pose-mv.md`）。头和身子必须出自同一个画源，骨骼只做小动作：《违背的青春》头是豆包画的、身子是代码拼的，修了四版还是"头是头，身是身"；改成骨骼去掰，肩膀裂开、脚尖乱指。
 8. **用户原话进卡片**：用户说过的具体要求（比如「灯光不要拍扁」）原文写进需求卡的禁区或硬要求。
 9. **大任务按职责分给多个 agent**（`references/division-of-labor.md`）：先定骨架文件，各职责只引用编号，算术用脚本校验；不靠降低思考强度来避免超时。
 10. **作品归档到 `~/video-forge`**，不放临时目录；临时目录重启会丢。
@@ -40,7 +40,7 @@ description: 成片工坊总入口：画风视频、音乐 MV、科普动画、�
 | 需求 | 产线 | 文件 |
 |---|---|---|
 | 某个画风的短片（30–90 秒），主题自定 | 画风视频 | `references/pipeline-style-film.md` |
-| 给一首歌做 MV | MV | `references/pipeline-mv.md` |
+| 给一首歌做 MV | MV：先读歌词、编故事；生产时代码逐帧画（粉笔定格方案、mv-director），或者出文本交给 Muse | `references/pipeline-mv.md` |
 | 讲清一件事、历史、数据 | 科普 | `references/pipeline-explainer.md` |
 | 可以拖拽旋转的三维小场景 | 微缩 | `references/pipeline-diorama.md` |
 
@@ -90,7 +90,7 @@ description: 成片工坊总入口：画风视频、音乐 MV、科普动画、�
 | 1–5 卡片 | [references/card-templates.md](references/card-templates.md) | 贴需求卡、风格卡、设定卡、分镜联系表时 |
 | 2 画风 | [references/style-picker.md](references/style-picker.md) | 用户没选画风、不知道做什么内容 |
 | 3–6 生产 | [references/pipeline-style-film.md](references/pipeline-style-film.md) | 用 lemo-opuscar 画风做短片 |
-| | [references/pipeline-mv.md](references/pipeline-mv.md) | 做音乐 MV |
+| | [references/pipeline-mv.md](references/pipeline-mv.md) | 做音乐 MV：读歌词 → 故事梗概 → 路线 A 代码逐帧（角色要演戏就用 `recipes/chalk-pose-mv.md`）或路线 B 交给 Muse |
 | | [references/pipeline-explainer.md](references/pipeline-explainer.md) | 用 Remotion 做信息、科普视频 |
 | | [references/pipeline-diorama.md](references/pipeline-diorama.md) | 做 three.js 三维微缩场景 |
 | 3–6 分工 | [references/division-of-labor.md](references/division-of-labor.md) | 用多个 agent 写 Treatment 或做生产时：职责划分、骨架文件、校验脚本 |
