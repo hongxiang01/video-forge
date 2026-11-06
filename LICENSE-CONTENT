@@ -13,6 +13,10 @@ license, and indicate if changes were made.
 Full legal code: https://creativecommons.org/licenses/by/4.0/legalcode
 
 Third-party material keeps its own license:
-- 样片墙/ images: from lemo-opuscar by LemoLab (films CC BY 4.0, code MIT),
+- gallery/ images: from lemo-opuscar by LemoLab (films CC BY 4.0, code MIT),
   https://github.com/lemomo-ai/lemo-opuscar
-- External dependencies listed in 依赖.json keep their original licenses.
+- Songs, recordings and lyrics used or quoted in works (e.g. "违背的青春" by
+  Joker Xue / 薛之谦, in works/weibei-youth-mv/ and
+  assets/previews/weibei-youth-mv.mp4) belong to their rights holders and are
+  NOT covered by this license. That MV is a non-commercial fan work.
+- External dependencies listed in deps.json keep their original licenses.

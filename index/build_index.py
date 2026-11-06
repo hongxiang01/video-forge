@@ -86,19 +86,36 @@ else:
     missing.append('anything2explainer')
 
 # ── 自己的：我的画风 / 方案 ──
+def own_head(path, fallback):
+    """从画风卡 / 方案的第一个标题取名称、第一行引用取一句话说明"""
+    name, desc = fallback, ''
+    if os.path.exists(path):
+        for line in open(path, encoding='utf-8'):
+            s = line.strip()
+            if name == fallback and s.startswith('# '):
+                name = re.sub(r'^#\s*(方案：)?', '', s).split(' — ')[0].strip() or fallback
+            elif not desc and s.startswith('> '):
+                desc = re.sub(r'^>\s*(一句话：)?', '', s).split('。')[0].strip() + '。'
+            if name != fallback and desc:
+                break
+    return name, desc
+
+
 for d in sorted(glob.glob(f'{ROOT}/my-styles/*/')):
     n = os.path.basename(d.rstrip('/'))
-    add(type='画风', sub='我的画风', name=n, id=n, src='自有', desc='', tags=[], local=True, path=os.path.relpath(d, ROOT) + 'STYLE.md', fetch='')
+    name, desc = own_head(d + 'STYLE.md', n)
+    add(type='画风', sub='我的画风', name=name, id=n, src='自有', desc=desc, tags=[], local=True, path=os.path.relpath(d, ROOT) + 'STYLE.md', fetch='')
 for f in sorted(glob.glob(f'{ROOT}/recipes/*.md')):
     n = os.path.basename(f)[:-3]
     if n.startswith('_'):
         continue
-    add(type='方案', sub='我的方案', name=n, id=n, src='自有', desc='', tags=[], local=True, path=os.path.relpath(f, ROOT), fetch='')
+    name, desc = own_head(f, n)
+    add(type='方案', sub='我的方案', name=name, id=n, src='自有', desc=desc, tags=[], local=True, path=os.path.relpath(f, ROOT), fetch='')
 
 for it in items:
     it['license'] = LIC.get(it['src'], '自有')
 
-os.makedirs(f'{ROOT}/索引', exist_ok=True)
+os.makedirs(f'{ROOT}/index', exist_ok=True)
 json.dump({'missing': missing, 'items': items}, open(f'{ROOT}/index/index.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 
 # ── 人读版 ──

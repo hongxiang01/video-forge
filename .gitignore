@@ -8,7 +8,7 @@ vendor/
 *.mp3
 *.m4a
 *.aac
-node_modules/
+node_modules
 .venv/
 build_*/
 renders/
@@ -33,3 +33,11 @@ works/rainy-corner-diorama/screenshots/dbg-*
 
 # 例外：压缩过的预览视频要进仓库（GitHub Pages 播放用，每个 ≤10MB）
 !assets/previews/*.mp4
+
+# 《违背的青春》MV：逐帧渲染、豆包原图、切好的姿势图、字体都很大，只留本机（重渲要拷 chalk/design 和 chalk/fonts）
+# 进仓库的图只有 works/weibei-youth-mv/preview/ 里挑过的几张小图
+works/weibei-youth-mv/**/*.png
+works/weibei-youth-mv/**/*.jpg
+!works/weibei-youth-mv/preview/*.jpg
+works/weibei-youth-mv/**/*.ttf
+works/weibei-youth-mv/**/*.log
