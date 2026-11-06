@@ -6,7 +6,7 @@
 [![Site](https://img.shields.io/badge/site-github.io-E2552B)](https://hongxiang01.github.io/video-forge/)
 [![Content License](https://img.shields.io/badge/content-CC%20BY%204.0-lightgrey)](LICENSE-CONTENT)
 
-**一句话想法进来，画风视频出去。** video-forge 是一个 [Claude Code](https://claude.com/claude-code) skill，加上一个作品库，负责画风短片、音乐 MV、科普动画和三维微缩场景。画面全部用代码绘制（Remotion / canvas / three.js），不用生成式视频模型。
+**一句话想法进来，画风视频出去。** video-forge 是一个 [Claude Code](https://claude.com/claude-code) skill，加上一个作品库，负责画风短片、音乐 MV、科普动画和三维微缩场景。画面默认用代码绘制（Remotion / canvas / three.js）；角色原画可以让豆包照同一张设定图画；真人、3D 这类代码画不出来的画风，由它出剧本、资产表和逐镜提示词，交给生成式视频工具。
 
 它不自己发明画风和动效，而是当**导演和关卡**：
 - 先追问到每个细节，画风、分镜确认后才开工；
@@ -29,12 +29,13 @@
 
 | 作品 | 类型 | 说明 |
 |---|---|---|
+| [违背的青春](works/weibei-youth-mv/) | 音乐 MV · 黑板粉笔定格动画 · 2:27（无字版 + 歌词版） | 长大的"我"一格一格守着规矩，当年骄傲的少年留在彩色跳房子里，目送他走远。角色是豆包照同一张设定图画的粉笔原画，切开后按拍子换张；歌词用粉笔逐字写出、唱完擦掉。前后八版：[复盘](retros/2026-11-06-weibei-youth-mv.md)，做法沉淀成[方案](recipes/chalk-pose-mv.md)。音乐是薛之谦《违背的青春》，版权归原权利人，非商业二次创作 |
 | [最后一碗面](films/last-bowl/) | 叙事微短片 · 80 年代赛璐璐 + 三渲二 · 45 秒 | 深夜面馆，老师傅关门前的最后一碗面。有手的镜头用三维骨骼手 + 卡通渲染，画面仍是平涂赛璐璐；前后六版，[复盘：为什么改了六版](retros/2026-11-05-last-bowl.md) |
 | [《最后一碗面》幕后](works/last-bowl-making-of/) | 幕后科普 · 发布会大屏 · 2:48 | 逐段讲第一版的问题、平面画法为什么改不动、三渲二解决了什么、AI 在哪里自信地看错，最后放第六版。Remotion，一份时间轴管切片、出图、混音。[分镜与出处](works/last-bowl-making-of/script.md) |
 | [AI 到底该怎么用](works/ai-howto/) | 科普讲解 · 纸本风格 · 3:46 | 用一条工厂流水线讲"管人和用 AI 是同一套逻辑"：毛奇的作战计划、贝索斯的单向门、新乡重夫的弹簧小碟、PDCA。Remotion 17 个镜头，4 个 agent 并行构建，两轮评审。[源码](works/ai-howto/video/) |
 | [雨夜便利店街角](works/rainy-corner-diorama/) | 三维微缩 · 三渲二 | three.js 可拖拽的雨夜街角模型，三渲二描边加霓虹倒影。[在线版](https://claude.ai/artifact/EihBG86XhJRQmKkUZ8wC56) |
 
-<img src="assets/rain-corner.jpg" width="49%" /> <img src="assets/ai-howto-218.jpg" width="49%" />
+<img src="assets/weibei-youth-mv.jpg" width="49%" /> <img src="assets/rain-corner.jpg" width="49%" />
 
 ## 🚀 快速开始
 
@@ -70,10 +71,11 @@ video-forge/
 ├── index/                  # 总目录（build_index.py 从各库自动生成）
 ├── deps.json              # 外部依赖清单：地址、锁定版本、许可、用到什么
 ├── bootstrap.sh           # 一键拉取外部依赖
-├── recipes/                  # 可复用的生产方案（画风 + 产线 + 追问补充 + 关卡）
+├── recipes/                  # 可复用的生产方案：三渲二微缩、黑板粉笔定格 MV
 ├── my-styles/              # 自己沉淀的画风卡
 ├── works/<slug>/         # 需求卡、风格卡、分镜、源码、评分记录
-├── retros/                  # 每次做完的复盘
+├── retros/                  # 每次做完的复盘，skill 的进化日志
+├── tools/                   # 自己写的工具：豆包生图自动化（doubao/）、代码作曲（music/）
 ├── gallery/                # 66 种 lemo 画风样片墙（index.html 本地打开）
 ├── films/                 # lemo 产线的生产目录
 └── vendor/                  # 外部依赖下载到这里（不进仓库）
@@ -85,6 +87,7 @@ video-forge/
 
 - 本仓库的**代码**（skill 脚本、`index/`、`bootstrap.sh`、作品源码）：[MIT](LICENSE)。
 - 本仓库的**内容**（作品文案、分镜、复盘、画风卡、截图）：[CC BY 4.0](LICENSE-CONTENT)。
+- 作品里引用的歌曲、录音和歌词（《违背的青春》，薛之谦词曲）版权归原权利人，不在 CC BY 4.0 范围内；粉笔引擎取自 lemo-opuscar（MIT），署名见 `works/weibei-youth-mv/chalk/CREDITS`。
 - `gallery/` 的影片截图来自 [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar)（影片 CC BY 4.0，代码 MIT）。
 - 外部依赖各自保留原许可，见 `deps.json`。其中 video-talkcraft、anything2explainer 是 **PolyForm Noncommercial**：仅限非商业使用，代码不收进本仓库；商用需先取得原作者授权。
 

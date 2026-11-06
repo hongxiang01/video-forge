@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>成片工坊 video-forge</title>
-<meta name="description" content="一句话想法进来，画风视频出去。Claude Code skill + 作品库，画面全部用代码绘制。">
+<meta name="description" content="一句话想法进来，画风视频出去。Claude Code skill + 作品库，画面默认用代码绘制。">
 <style>
   :root {
     --bg: #F2ECE0; --card: #FBF8F1; --soft: #E4D9C4; --mid: #7d7365; --ink: #1F1B16; --accent: #E2552B;
@@ -41,7 +41,7 @@
 <body>
 <main>
   <h1>成片工坊<small>VIDEO-FORGE</small></h1>
-  <p class="lead"><b>一句话想法进来，画风视频出去。</b>一个 Claude Code skill 加一个作品库：先追问到每个细节、按你定的标准审片，画面全部用代码绘制（Remotion / canvas / three.js），不用生成式视频模型。</p>
+  <p class="lead"><b>一句话想法进来，画风视频出去。</b>一个 Claude Code skill 加一个作品库：先追问到每个细节、按你定的标准审片。画面默认用代码绘制（Remotion / canvas / three.js），角色原画可以让豆包照同一张设定图画；真人、3D 这类代码画不出来的画风，出剧本和资产表交给生成式视频工具。</p>
   <nav>
     <a href="https://github.com/hongxiang01/video-forge">GitHub 仓库</a>
     <a href="gallery/">画风样片墙（66 种）</a>
@@ -51,6 +51,15 @@
 
   <h2>作品</h2>
   <div class="works">
+    <div class="work">
+      <video src="assets/previews/weibei-youth-mv.mp4" poster="assets/weibei-youth-mv.jpg" controls preload="metadata" playsinline></video>
+      <div class="t">
+        <div class="tag">音乐 MV · 黑板粉笔定格动画 · 歌词版 2:27</div>
+        <h3>违背的青春</h3>
+        <p>长大后的"我"一格一格守着规矩，当年那个骄傲的少年留在彩色的跳房子里，目送他走远。角色是照同一张设定图画的粉笔原画，按拍子一张张换；歌词用粉笔逐字写出、唱完擦掉。前后改了八版。<a href="https://github.com/hongxiang01/video-forge/blob/main/retros/2026-11-06-weibei-youth-mv.md">为什么改了八版</a> · <a href="https://github.com/hongxiang01/video-forge/blob/main/recipes/chalk-pose-mv.md">做法</a> · <a href="https://github.com/hongxiang01/video-forge/tree/main/works/weibei-youth-mv">源码</a></p>
+        <p>音乐：薛之谦《违背的青春》（词曲 薛之谦），版权归原权利人，非商业二次创作，不在本站 CC BY 授权范围内。</p>
+      </div>
+    </div>
     <div class="work">
       <video src="assets/previews/last-bowl.mp4" poster="assets/last-bowl.jpg" controls preload="metadata" playsinline></video>
       <div class="t">
@@ -100,7 +109,7 @@ ln -s ~/video-forge/skill ~/.claude/skills/video-forge
 bash ~/video-forge/bootstrap.sh</pre>
 
   <footer>
-    代码 MIT · 内容 CC BY 4.0 · 样片墙影片来自 <a href="https://github.com/lemomo-ai/lemo-opuscar">lemo-opuscar</a>（CC BY 4.0）。
+    代码 MIT · 内容 CC BY 4.0 · 样片墙影片来自 <a href="https://github.com/lemomo-ai/lemo-opuscar">lemo-opuscar</a>（CC BY 4.0）· 作品中引用的歌曲、歌词版权归原权利人。
   </footer>
 </main>
 </body>
