@@ -1,0 +1,28 @@
+{
+ "layers": [
+  {
+   "file": "L0.png",
+   "depth_hint": "far"
+  },
+  {
+   "file": "L1.png",
+   "depth_hint": "mid"
+  },
+  {
+   "file": "L2.png",
+   "depth_hint": "mid"
+  },
+  {
+   "file": "L3.png",
+   "depth_hint": "near"
+  }
+ ],
+ "floor_y": 985,
+ "floor_kind": "outdoor",
+ "pad": 60,
+ "ref_size": [
+  2048,
+  1152
+ ],
+ "notes": "地面线 y=985 是人行道路沿；L2 含人行道和路面（y>985 是马路，带两摊积水倒影），场景若自己铺地面可盖住。招牌字已抹成空白色块；远处楼群在夜色里很暗，天际线是粗框。"
+}

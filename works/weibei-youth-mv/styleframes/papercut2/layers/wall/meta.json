@@ -1,0 +1,28 @@
+{
+ "layers": [
+  {
+   "file": "L0.png",
+   "depth_hint": "far"
+  },
+  {
+   "file": "L1.png",
+   "depth_hint": "mid"
+  },
+  {
+   "file": "L2.png",
+   "depth_hint": "mid"
+  },
+  {
+   "file": "L3.png",
+   "depth_hint": "near"
+  }
+ ],
+ "floor_y": 1000,
+ "floor_kind": "outdoor",
+ "pad": 60,
+ "ref_size": [
+  2048,
+  1152
+ ],
+ "notes": "地面线 y=1000 是墙根/人行道与路面交界；L3 含墙下方整条路面（y>1000），场景若自己铺地面可盖住。路灯光锥留在 L1 楼群上。"
+}

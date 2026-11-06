@@ -1,0 +1,32 @@
+[
+ {
+  "file": "design/adult_h0.png",
+  "w": 409,
+  "h": 471
+ },
+ {
+  "file": "design/adult_h1.png",
+  "w": 428,
+  "h": 483
+ },
+ {
+  "file": "design/adult_h2.png",
+  "w": 461,
+  "h": 483
+ },
+ {
+  "file": "design/adult_h3.png",
+  "w": 512,
+  "h": 474
+ },
+ {
+  "file": "design/adult_h4.png",
+  "w": 472,
+  "h": 474
+ },
+ {
+  "file": "design/adult_h5.png",
+  "w": 489,
+  "h": 555
+ }
+]

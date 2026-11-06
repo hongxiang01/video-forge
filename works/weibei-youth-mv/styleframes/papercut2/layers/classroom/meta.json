@@ -1,0 +1,28 @@
+{
+ "layers": [
+  {
+   "file": "L0.png",
+   "depth_hint": "far"
+  },
+  {
+   "file": "L1.png",
+   "depth_hint": "mid"
+  },
+  {
+   "file": "L2.png",
+   "depth_hint": "mid"
+  },
+  {
+   "file": "L3.png",
+   "depth_hint": "near"
+  }
+ ],
+ "floor_y": 1030,
+ "floor_kind": "indoor",
+ "pad": 60,
+ "ref_size": [
+  2048,
+  1152
+ ],
+ "notes": "室内：floor_y=1030 是前排课桌腿落地处、底部纸条上沿，人物站在课桌前。L2 课桌排连同桌下地板一起，L3 是画框式的上下纸条（上为天花板纸片，下为前景纸条），会压住人物脚下 y>1035 的一小条。"
+}

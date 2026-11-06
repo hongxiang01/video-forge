@@ -1,0 +1,29 @@
+《违背的青春》MV 粉笔版（第 7 版）· 署名与许可
+
+音乐与歌词
+- 《违背的青春》，薛之谦作词作曲（2018）。歌曲、录音和歌词的版权归原权利人所有。
+- 本片是非商业的二次创作。歌曲和歌词不在本仓库的 MIT / CC BY 4.0 授权范围内。
+- 音频不进仓库：mux.sh 和 mux_lyrics.sh 读的是本机的 ~/mv-xue/song.mp3。
+
+粉笔引擎（第三方，MIT）
+- js/chalk.js、js/post.js、js/r2d.js、js/stage.js、core/lib.js 原样取自 lemo-opuscar 的 chalkboard 画风示例。
+- 版权 © 2026 LemoLab，https://github.com/lemomo-ai/lemo-opuscar。
+- 许可全文见 LICENSE-lemo-opuscar.txt。
+
+本作品自己写的代码（MIT，见仓库根目录 LICENSE）
+- js/main.js：黑板、相机、动态层。
+- js/world.js。
+- js/poses.js：姿势原画换张、长条拼接、浪尖高度。
+- js/film.js：28 个镜头。
+- 历史版本：js/puppet*.js、js/film.v*.js、js/rig.js、js/film.rig.js。
+- 脚本：design/ 下的切图、建表、头像处理；render.py、qc_frames.py、review_sheets.py、lyrics_chalk.py、lyrics_sheet.py、mux*.sh。
+
+角色与道具原画
+- 由豆包（字节跳动）AI 生图，参考本作品的角色设定图和风格帧生成，再由 design/poses/cut_sheet.py 抠底、修补水印。
+- 提示词在 design/poses/jobs_*.json。
+- 原图和切好的姿势图只在本机，不进仓库。
+
+字体
+- 霞鹜文楷 LXGW WenKai Medium，© LXGW，SIL Open Font License 1.1，https://github.com/lxgw/LxgwWenKai。
+- 用于歌词版的粉笔字。
+- 字体文件放在 fonts/，不进仓库。
