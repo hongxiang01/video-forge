@@ -12,11 +12,12 @@
 
 本作品自己写的代码（MIT，见仓库根目录 LICENSE）
 - js/main.js：黑板、相机、动态层。
-- js/world.js。
+- js/world.js：格子、跳房子、自行车、星星、擦除。
 - js/poses.js：姿势原画换张、长条拼接、浪尖高度。
+- js/paint.js：粉笔涂色和粉笔线。
 - js/film.js：28 个镜头。
-- 历史版本：js/puppet*.js、js/film.v*.js、js/rig.js、js/film.rig.js。
-- 脚本：design/ 下的切图、建表、头像处理；render.py、qc_frames.py、review_sheets.py、lyrics_chalk.py、lyrics_sheet.py、mux*.sh。
+- 脚本：design/ 下的切图、建表、设定图抠底、纹理；render.py、qc_frames.py、review_sheets.py、lyrics_chalk.py、lyrics_sheet.py、mux*.sh。
+- 历史版本（代码画身子、骨骼人偶）已从目录删除，留在提交 d64b68d 里。
 
 角色与道具原画
 - 由豆包（字节跳动）AI 生图，参考本作品的角色设定图和风格帧生成，再由 design/poses/cut_sheet.py 抠底、修补水印。

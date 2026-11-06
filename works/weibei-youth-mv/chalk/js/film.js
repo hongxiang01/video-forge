@@ -1,10 +1,10 @@
-// 《违背的青春》MV 第 6 版（v3）：黑板粉笔画。镜头表见 ../SHOTBOOK.md（S01–S28）。window.renderAt(t)。
-// v3 按第二轮评委：去掉一帧跳变（姿势一律连续过渡）、道具长在手上、真的跳格、车原地变色、副歌提亮画满、少年在拍点落地亮相。
+// 《违背的青春》MV 第 7 版：黑板粉笔画 + 姿势原画（豆包照同一张设定图画的连续姿势，按时间换张，见 js/poses.js）。
+// 镜头表见 ../SHOTBOOK.md（S01–S28），每镜一个函数（SHOTS）。window.renderAt(t) 画第 t 秒。
 import { clamp, lerp } from '/core/lib.js';
-import { Stroke, line, curve, arc, rng, n1 } from './chalk.js';
+import { Stroke, line, arc, rng } from './chalk.js';
 import { renderFrame, drawSlate, cam, applyCam, characterLayers, W, H } from './main.js';
-import { drawFox, paint, gapLine, chalkLine, TEX, HEADS, BODY, PAL, useRig } from './puppet.js';
-import { WORLD, WIPES, COL, add, grid, floorGrid, bike, star, waves, digit, hopscotch, crowd, desk, chair, bakeAll, drawWorld } from './world.js';
+import { paint, chalkLine, TEX } from './paint.js';
+import { WORLD, WIPES, COL, add, grid, floorGrid, bike, star, digit, hopscotch, bakeAll, drawWorld } from './world.js';
 import { POSE, loadPoses, drawPose, drawStrip, stripTop, setProbing } from './poses.js';
 
 const SONG = await (await fetch('song.json')).json();
@@ -13,18 +13,10 @@ const ss = (x) => { x = clamp(x); return x * x * (3 - 2 * x); };
 const ramp = (t, a, b) => ss((t - a) / (b - a));
 const eio = (x) => { x = clamp(x); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
 const bump = (t, a, b) => (t <= a || t >= b ? 0 : Math.sin(((t - a) / (b - a)) * Math.PI));
-const mixP = (a, b, u) => [lerp(a[0], b[0], u), lerp(a[1], b[1], u)];
 const load = (f) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = f; });
-for (const who of ['kid', 'adult']) { for (let k = 0; k < 6; k++) HEADS[who].push(await load(`design/${who}_c${k}.png`)); HEADS[who].push(await load(`design/${who}_c0b.png`)); TEX[who] = await load(`design/tex_${who}.png`); }
-await useRig('kid'); await useRig('adult');   // 身子换成骨骼贴图（豆包全身设定图切的部件，见 js/rig.js）
+TEX.kid = await load('design/tex_kid.png');   // 少年头像毛发取的笔触纹理（S06 镜片里的星星用）
 await loadPoses();   // 第 7 版：大动作改用姿势原画（豆包按同一角色画的连续姿势，按时间换张，见 js/poses.js）
-const blink = (t, times) => times.some((b) => t >= b && t < b + 0.14);
-// 表情按时间切换：ex(t, 起始表情, 时刻1, 表情1, 时刻2, 表情2, …)。切换点前后各 0.05 秒用闭眼头（眨眼换脸），不让整张脸一帧跳变
-// 同时点一下头（nod），头的角度变化藏在点头里
-const ex = (t, e0, ...sw) => { let e = e0, nod = 0; for (let i = 0; i < sw.length; i += 2) nod = Math.max(nod, bump(t, sw[i] - 0.13, sw[i] + 0.13)); for (let i = 0; i < sw.length; i += 2) { if (Math.abs(t - sw[i]) < 0.05) return { expr: 0, eyes: 2, nod }; if (t >= sw[i]) e = sw[i + 1]; } return { expr: e, nod }; };
 const SB = (x) => BEATS.reduce((b, y) => (Math.abs(y - x) < Math.abs(b - x) ? y : b), BEATS[0]);
-// 平滑：对一个随时间变化的量取过去 win 秒的平均（消除一帧跳变）
-const smoothed = (fn, t, win = 0.3, n = 8) => { let s = 0; for (let i = 0; i < n; i++) s += fn(t - (win * i) / (n - 1)); return s / n; };
 
 // ================= 世界布局 =================
 const A1 = { cell: 230 };
@@ -67,7 +59,6 @@ const HESP = [0, 1, 2, 3].map((i) => POSE[`A_hesitate_v1_${i}`]);
 const HESB0 = [(HESP[0].foot[0] - HESP[0].ax) * HESP[0].k, (HESP[0].foot[1] - HESP[0].ay) * HESP[0].k];   // 身子底边中点相对第 1 张粉笔尖
 const HES = [[2600, -362], [2600 + HESB0[0] + (HESP[1].ax - HESP[1].foot[0]) * HESP[1].k, -362 + HESB0[1] + (HESP[1].ay - HESP[1].foot[1]) * HESP[1].k + 46]];
 const HESB = [[0, 0], null, HESB0, HESB0];
-let S10th = 0.2;   // S10 预演时算出的小臂角度
 const hesS = add([line(...HES[0], ...HES[1], { color: COL.orange, w: 6 })], 52.9, 53.4, { group: 'hes' });
 WIPES.push({ t0: 54.25, t1: 54.8, path: [[2596, -374], [2611, -288]], w: 46, soft: 10, haze: 0.25 });
 [73.0, 73.71, 74.43, 75.14].forEach((t0, k) => WIPES.push({ t0, t1: t0 + 0.35, path: [[DL - 60 - k * 230, 60], [DL - 60 - (k + 1) * 230, 160]], w: 260, soft: 18, haze: 0 }));
@@ -126,8 +117,8 @@ const A3 = { cx: 25000 };
 const DESK = { x: A3.cx - 154 };
 // S26 跪下放硬币：三张按下半身中心对齐（第 2 张锚在硬币上），dx = 第 1、3 张相对硬币的位置
 const PLACE = { dx0: 273, dx2: 173 };
-// 公文包平放在地上（豆包画的道具；没有道具图时用代码画的）
-const drawCaseFlat = (api, x, y) => (POSE.P_props_v1_0 ? drawPose(api, 'P_props_v1_0', { x, y }) : drawCaseProp(api, x, y));   // 桌面左上角的世界 x（两张大人原画都锚在这里，桌子不动）
+// 公文包平放在地上（豆包画的道具）
+const drawCaseFlat = (api, x, y) => drawPose(api, 'P_props_v1_0', { x, y });
 // 一分为二的黑板：左彩右白
 const SPLIT = { x: 34000 }, KX2 = SPLIT.x - 2300 + 340;
 add(hopscotch(SPLIT.x - 2300, 70, 170), 109.9, 110.0, { group: 'splitL', instant: true });
@@ -140,54 +131,12 @@ bakeAll();
 
 // ================= 画东西 =================
 let PROBE = false;
-function fox(api, who, P) {
-  const s = P.scale ?? 1, h = (who === 'kid' ? 640 : 900) * s, Q = { boil: api.boil, ...P };
-  if (Q.nod) { Q.headY = (Q.headY ?? 0) + 12 * Q.nod; Q.headTilt = (Q.headTilt ?? 0) + 0.12 * Q.nod; }
-  if (PROBE) { drawFox({ probe: true }, who, Q); return Q; }
-  const clip = Q.clipX1 != null, b = api.board;   // clipX1：只画世界 x 小于它的部分（被门框挡住）
-  if (clip) { b.save(); applyCam(b); b.beginPath(); b.rect(-1e6, -1e6, Q.clipX1 + 1e6, 2e6); b.clip(); }
-  const G = characterLayers(api, [P.x - 600 * s, (P.y ?? 0) - h - 100 * s, P.x + 600 * s, (P.y ?? 0) + 130 * s]); drawFox(G, who, Q);
-  if (clip) b.restore();
-  return Q;
-}
-const handW = (Q, k = 'AN') => { const e = Q._out[k].e, s = Q.scale ?? 1, f = (Q.face ?? 1) * (Q.sx ?? 1); return [Q.x + f * s * e[0], (Q.y ?? 0) + s * e[1]]; };
-// 身体上的点（局部坐标）：沿躯干从髋往上 d、往前 f。蹲下、前倾时手跟着身子走，不会定在半空把胳膊拧过脸
-const bodyPt = (who, P, d, f) => { const B = BODY[who], c = P.crouch ?? 0, l = P.lean ?? 0, hy = -B.hip * (1 - 0.2 * c) + (P.bob ?? 0); return [Math.sin(l) * d + Math.cos(l) * f, hy - Math.cos(l) * d + Math.sin(l) * f]; };
-// 远侧手的默认垂放位置，用来和指定位置平滑混合
-const restHandF = (who, P) => { const Q = { ...P, hands: { n: (P.hands || {}).n } }; drawFox({ probe: true }, who, Q); return Q._out.AF.e; };   // 用骨架本身算（探测一遍不画），和 drawFox 永远一致
-const toLocal = (P, w) => [(w[0] - P.x) / ((P.scale ?? 1) * (P.face ?? 1)), (w[1] - (P.y ?? 0)) / (P.scale ?? 1)];
 function prop(api, rect, fn) { if (PROBE) return; const G = characterLayers(api, rect); fn(G.back); G.flush(); }
-const TXA = (o = {}) => ({ tex: TEX.adult, texS: 0.6, ...o });
-function coinShape(L, x, y, r, flip, colored) {
-  const sx = Math.max(0.07, Math.abs(Math.cos(flip))), col = colored ?? Math.cos(flip) < 0;
-  for (const c of [L.fill, L.line]) { c.save(); c.translate(x, y); c.scale(sx, 1); }
-  const circ = Array.from({ length: 28 }, (_, k) => [Math.cos((k / 28) * 6.283) * r, Math.sin((k / 28) * 6.283) * r]);
-  paint(L, circ, col ? '#efc55a' : '#d9d8d0', col ? '#d4a644' : '#bdbcb4', TXA({ seed: 3, shade: 0, hl: false }));
-  chalkLine(L.line, Array.from({ length: 29 }, (_, k) => [Math.cos((k / 28) * 6.283) * r * 0.8, Math.sin((k / 28) * 6.283) * r * 0.8]), col ? 'rgba(255,241,194,0.8)' : 'rgba(244,243,236,0.8)', Math.max(1.5, r * 0.05));
-  if (col) { const img = HEADS.kid[1], k = (r * 1.5) / img.height; L.line.save(); L.line.beginPath(); L.line.arc(0, 0, r * 0.76, 0, 6.29); L.line.clip(); L.line.drawImage(img, (-img.width * k) / 2, -img.height * k * 0.56, img.width * k, img.height * k); L.line.restore(); }
-  else for (let i = -1; i <= 1; i++) { chalkLine(L.line, [[-r * 0.52, i * r * 0.27 + r * 0.02], [r * 0.5, i * r * 0.27 - r * 0.02]], 'rgba(120,122,116,0.9)', Math.max(1.4, r * 0.05)); chalkLine(L.line, [[i * r * 0.27 - r * 0.02, -r * 0.5], [i * r * 0.27 + r * 0.02, r * 0.52]], 'rgba(120,122,116,0.9)', Math.max(1.4, r * 0.05)); }
-  for (const c of [L.fill, L.line]) c.restore();
-}
 function drawCoin(api, x, y, r, flip, colored = null) {
   const col = colored ?? Math.cos(flip) < 0, id = col ? 'P_props_v1_3' : 'P_props_v1_2', p = POSE[id];   // 第 7 版：豆包画的硬币（金面是少年的笑脸）
   drawPose(api, id, { x, y, scale: r / (p.r * p.k), sx: Math.max(0.07, Math.abs(Math.cos(flip))) });
 }
-function boatShape(L, x, y, sc, tilt) {
-  for (const c of [L.fill, L.line]) { c.save(); c.translate(x, y); c.rotate(tilt); c.scale(sc, sc); }
-  paint(L, [[-72, -8], [72, -8], [46, 28], [-46, 28]], '#f1ece0', '#c4c0b3', TXA({ seed: 7, shade: 3 }));
-  paint(L, [[-34, -8], [0, -74], [34, -8]], '#f6f2e8', '#cfcbbf', TXA({ seed: 8, shade: 2 }));
-  gapLine(L.line, [[0, -72], [0, -10]], 2); gapLine(L.line, [[-60, 2], [60, 2]], 1.6);
-  for (const c of [L.fill, L.line]) c.restore();
-}
-function drawBoat(api, x, y, sc = 1, tilt = 0) { prop(api, [x - 110 * sc, y - 110 * sc, x + 110 * sc, y + 50 * sc], (L) => boatShape(L, x, y, sc, tilt)); }
-const chalkStub = (len = 40, spin = 0) => (L, hn, hf, J, o) => {
-  const [jx, jy] = o.AN.j, [ex, ey] = hn; let dx = ex - jx, dy = ey - jy; const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d;
-  const a = Math.atan2(dy, dx) + 0.45 + spin, ux = Math.cos(a), uy = Math.sin(a), nx = -uy, ny = ux, bx = ex + dx * 20, by = ey + dy * 20;
-  paint(L, [[bx - nx * 7 - ux * 8, by - ny * 7 - uy * 8], [bx + nx * 7 - ux * 8, by + ny * 7 - uy * 8], [bx + nx * 7 + ux * len, by + ny * 7 + uy * len], [bx - nx * 7 + ux * len, by - ny * 7 + uy * len]], '#f08a3c', '#b85c22', { tex: TEX.kid, texS: 0.5, shade: 2, hl: false });
-};
-const coinHeld = (r, flip, colored) => (L, hn, hf, J, o) => { const [jx, jy] = o.AN.j, [ex, ey] = hn; const dx = ex - jx, dy = ey - jy, d = Math.hypot(dx, dy) || 1; coinShape(L, ex + (dx / d) * 30, ey + (dy / d) * 30 - 8, r, flip, colored); };
 function drawStub(api, x, y, ang) { drawPose(api, 'P_props_v1_1', { x, y, rot: ang }); }   // 第 7 版：豆包画的橙色粉笔头
-function drawCaseProp(api, x, yBottom) { prop(api, [x - 80, yBottom - 140, x + 80, yBottom + 20], (L) => { paint(L, [[x - 58, yBottom - 84], [x + 58, yBottom - 84], [x + 58, yBottom], [x - 58, yBottom]], PAL.adult.case, PAL.adult.caseD, { seed: 61, dir: 0, chalk: true }); chalkLine(L.line, [[x - 18, yBottom - 83], [x - 15, yBottom - 102], [x + 15, yBottom - 102], [x + 18, yBottom - 83]], PAL.adult.caseD, 5); }); }
 function shadow(api, x, y, rx) { if (PROBE) return; const c = api.board; c.save(); applyCam(c); c.fillStyle = 'rgba(6,14,10,0.45)'; c.filter = `blur(${Math.max(1, 3 * cam.s)}px)`; c.beginPath(); c.ellipse(x, y, rx, rx * 0.28, 0, 0, 6.29); c.fill(); c.restore(); }
 // 板擦（侧面）：上面木头、下面毛毡，竖着拿、横着擦；和人物一样用 paint() 画，粉笔手感一致
 function eraserBlock(api, x, y, ang = 0, sc = 1) {
@@ -237,27 +186,9 @@ function dust(api, x, y, t, t0, n = 40, spread = 300, col = '230,226,212') {
   for (let i = 0; i < n; i++) { const a = R() * 6.28, sp = (0.3 + R()) * spread, px = x + Math.cos(a) * sp * ss(u / 1.2), py = y + Math.sin(a) * sp * ss(u / 1.2) * 0.6 - u * 40; c.fillStyle = `rgba(${col},${0.5 * (1 - u / 1.6)})`; c.beginPath(); c.arc(px, py, 2 + R() * 4, 0, 6.29); c.fill(); }
   c.restore();
 }
-function headPoint(who, P, ix, iy) {
-  const B = BODY[who], img = HEADS[who][0], hs = B.headH / img.height, s = P.scale ?? 1, f = (P.face ?? 1) * (P.sx ?? 1), neck = P._out.neck;
-  const a = (P.headTilt ?? 0) + (P.lean ?? 0) * 0.6, qx = (ix - img.width / 2) * hs, qy = (iy - img.height) * hs;
-  const X = neck[0] + B.headDX + (P.headX ?? 0) + qx * Math.cos(a) - qy * Math.sin(a), Y = neck[1] + B.headDY + (P.headY ?? 0) + qx * Math.sin(a) + qy * Math.cos(a);
-  return [P.x + f * s * X, (P.y ?? 0) + s * Y];
-}
 function tip(strokes, t) { let last = strokes[0].pts[0]; for (const s of strokes) { if (t < s.t0) return last; if (t <= s.t1) return s.at(s.prog(t) * s.len); last = s.end; } return last; }
 
 // ================= 动作 =================
-function walk(base, x0, s, o = {}) {
-  const { dir = 1, stride = 0.5, stance = 0.6, lift = 30, swing = 0.45, bob = 6, sc = 1, lean = 0.04 } = o;
-  const x = x0 + dir * s, q = s / stride, feet = {}, fl = {}, tilt = {}, rel = {};
-  for (const [k, off] of [['n', 0], ['f', 0.5]]) {
-    const qq = q + off, c = Math.floor(qq), f = qq - c, plant = (cc) => x0 + dir * (cc - off + 0.3) * stride;
-    let fx, ly = 0, tl = 0;
-    if (f < stance) fx = plant(c); else { const u = (f - stance) / (1 - stance); fx = lerp(plant(c), plant(c + 1), ss(u)); ly = Math.sin(u * Math.PI) * lift; tl = -0.3 * Math.sin(u * Math.PI); }
-    feet[k] = [((fx - x) * dir) / sc + (k === 'n' ? 10 : -14), 0]; fl[k] = ly / sc; tilt[k] = tl; rel[k] = (fx - x) * dir;
-  }
-  const ph = (q % 0.5) / 0.5;
-  return { ...base, x, face: dir, scale: sc, feet, footLift: fl, footTilt: tilt, bob: -Math.abs(Math.sin(ph * Math.PI)) * bob + bob * 0.5, lean, swingN: -clamp(rel.n / stride, -1, 1) * swing, swingF: -clamp(rel.f / stride, -1, 1) * swing };
-}
 function hops(t, tStart, n, cell) {
   // 每跳：拍后 0.22 拍离地，0.74 拍落地。落地缓冲和下一跳的预备蹲连成一个弧（两跳之间膝盖不突然伸直）；
   // 第一跳提前 0.6 拍慢慢蹲（不一帧蹲到底），最后一跳落地后用 0.9 拍慢慢站直
@@ -270,7 +201,6 @@ function hops(t, tStart, n, cell) {
   const u = clamp((f - 0.74) / 0.9);
   return { x: n * cell, lift: 0, crouch: 0.8 * Math.sin(Math.PI * (1 - (1 - u) * (1 - u))), air: 0 };
 }
-function hopPose(base, x0, h) { return { ...base, x: x0 + h.x, y: -h.lift, face: 1, crouch: h.crouch, feet: { n: [16, 0], f: [-12, 0] }, footLift: { n: h.air * 22, f: h.air * 28 }, footTilt: { n: -0.3 * h.air, f: -0.35 * h.air }, swingN: -0.35 * h.crouch + 0.55 * h.air, swingF: 0.3 * h.crouch - 0.45 * h.air, lean: 0.06 + 0.12 * h.crouch, caseSwing: -0.35 * h.air, headY: 8 * h.crouch }; }
 // ---- 第 7 版：姿势原画（整张画按时间换，像黑板定格动画）
 // fn(t) → { id, x, y, … }；换张后 1–2 帧留一点上一张的淡影（粉笔擦了重画的残影）
 function poseGhost(api, fn, t) {
@@ -302,12 +232,10 @@ function walkSprite(dt, X0, fd = 0.16) {
 }
 function camTo(x, y, s, r = 0) { cam.x = x; cam.y = y; cam.s = s; cam.r = r; }
 const lerpCam = (a, b, u) => camTo(lerp(a[0], b[0], u), lerp(a[1], b[1], u), Math.exp(lerp(Math.log(a[2]), Math.log(b[2]), u)), lerp(a[3] ?? 0, b[3] ?? 0, u));
-const breathe = (t, k = 1) => ({ bob: Math.sin(t * 2.1) * 2.5 * k, headTilt: 0.02 * Math.sin(t * 1.3) * k });
 
 // ================= 镜头 =================
 let NIGHT = 0;
 const XS4 = -1800 + 8 * A1.cell, XS5 = XS4 + 6 * A1.cell;
-const KNEEL = { crouch: 2.6, lean: 1.1 };
 const SHOTS = [
   [0, 5.65, (t, api) => { lerpCam([-3150, -1500, 3.2], [-2650, -1420, 2.6], ramp(t, 0.6, 5.6)); }],
   [5.65, 11.37, (t, api) => {
