@@ -49,7 +49,7 @@
 
 1. **听歌**：用 mv-director 的听歌脚本生成 `song.json`，里面有 bpm、逐拍、小节线、段落、能量、音乐炸开的时刻、逐字时间（强制对齐，约 80 ms 精度）。所有切点都放在小节线上。
 2. **读歌词 → 编故事**：先写 `lyrics_analysis.md`，逐句写清"我"是谁、"你"是谁、在说什么。再写一页故事：谁、想要什么、阻碍、转折、结果、首尾怎么对照。故事要围绕歌名的主旨，歌词只当心声，**不要一句歌词配一个画面**，也不要让某个配角意象喧宾夺主。
-3. **角色设定**：豆包出全身设定图（要求见第 2 节），用户确认。
+3. **角色设定**：豆包出全身设定图（要求见第 2 节），用户确认。提示词在 `design/body/jobs_body.json`，抠底用 `design/body/key_body.py`；样例见 `works/weibei-youth-mv/preview/ref_body_*.jpg`。
 4. **分镜本** `SHOTBOOK.md`：每镜写时间（小节线）、景别、运镜、主体动作、进下一镜的转场。另列一张**姿势清单**，写每镜要哪一组 4 连姿势、各张的动作。
 5. **画姿势**：每组在 `design/poses/jobs_*.json` 里写一条，`ref` 填全身设定图，然后运行 `python ~/video-forge/tools/doubao/doubao_gen.py jobs.json raw/`。提示词模板：
    ```
@@ -103,6 +103,7 @@
 - **模板**：整个 `works/weibei-youth-mv/chalk/`。换片子主要改 `js/film.js`（镜头）、`design/poses/build_poses.py` 的组配置、`review_sheets.py` 和 `qc_frames.py` 里的切点表，其余照用。
   - `js/poses.js`：换张、长条和浪尖的引擎。
   - `js/main.js`：黑板、相机和动态层。
+  - `js/world.js`：黑板上的粉笔世界（格子、跳房子、自行车、星星、擦除）；`js/paint.js`：粉笔涂色和粉笔线。
   - `js/chalk.js`、`post.js`、`r2d.js`、`stage.js`、`core/lib.js`：lemo-opuscar 原文件，MIT，见 `chalk/CREDITS`。
 - **依赖**：
   - Playwright 和 chrome-headless-shell 1243（render.py 里写死了路径）；

@@ -74,6 +74,16 @@
       "path": "~/.local/share/soundfonts/GeneralUser-GS.sf2",
       "mode": "file",
       "uses": "代码作曲的采样音色库（tools/music/code_score.py 用 FluidSynth 渲染）；另需 brew install fluid-synth"
+    },
+    {
+      "id": "lxgw-wenkai-medium",
+      "need": "opt",
+      "mode": "file",
+      "url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.530/LXGWWenKai-Medium.ttf",
+      "ref": "v1.530",
+      "path": "~/video-forge/works/weibei-youth-mv/chalk/fonts/LXGWWenKai-Medium.ttf",
+      "license": "SIL Open Font License 1.1",
+      "uses": "《违背的青春》歌词版的粉笔字（works/weibei-youth-mv/chalk/lyrics_chalk.py）；和本机文件逐字节同大小（25800076）"
     }
   ]
 }
